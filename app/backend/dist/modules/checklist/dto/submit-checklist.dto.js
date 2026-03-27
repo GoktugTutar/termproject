@@ -13,9 +13,8 @@ exports.SubmitChecklistDto = void 0;
 const class_validator_1 = require("class-validator");
 class SubmitChecklistDto {
     lessonId;
-    plannedHours;
     actualHours;
-    completed;
+    status;
 }
 exports.SubmitChecklistDto = SubmitChecklistDto;
 __decorate([
@@ -23,17 +22,13 @@ __decorate([
     __metadata("design:type", String)
 ], SubmitChecklistDto.prototype, "lessonId", void 0);
 __decorate([
-    (0, class_validator_1.IsInt)(),
-    (0, class_validator_1.Min)(0),
-    __metadata("design:type", Number)
-], SubmitChecklistDto.prototype, "plannedHours", void 0);
-__decorate([
-    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], SubmitChecklistDto.prototype, "actualHours", void 0);
 __decorate([
-    (0, class_validator_1.IsBoolean)(),
-    __metadata("design:type", Boolean)
-], SubmitChecklistDto.prototype, "completed", void 0);
+    (0, class_validator_1.IsIn)(['early', 'completed', 'incomplete', 'not_done']),
+    __metadata("design:type", String)
+], SubmitChecklistDto.prototype, "status", void 0);
 //# sourceMappingURL=submit-checklist.dto.js.map

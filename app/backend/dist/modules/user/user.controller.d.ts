@@ -1,18 +1,17 @@
 import { UserService } from './user.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
-import { UpdateStressDto } from './dto/update-stress.dto';
 export declare class UserController {
     private readonly userService;
     constructor(userService: UserService);
-    getProfile(req: any): {
+    getMe(req: any): {
         id: string;
-        name: string;
         email: string;
-        department?: string;
-        grade?: string;
+        name?: string;
+        gpa?: number;
+        semester?: string;
         stress: number;
+        busyTimes: string[];
         createdAt: string;
     } | null;
-    updateProfile(req: any, dto: UpdateUserProfileDto): Omit<import("./user.model").User, "password">;
-    updateStress(req: any, dto: UpdateStressDto): Omit<import("./user.model").User, "password">;
+    update(req: any, dto: UpdateUserProfileDto): Omit<import("./user.model").User, "password">;
 }

@@ -21,10 +21,6 @@ export class UserService {
     fs.writeFileSync(DATA_PATH, JSON.stringify(users, null, 2));
   }
 
-  findAll(): User[] {
-    return this.read();
-  }
-
   findById(id: string): User | undefined {
     return this.read().find((u) => u.id === id);
   }
@@ -33,14 +29,14 @@ export class UserService {
     return this.read().find((u) => u.email === email);
   }
 
-  create(data: Pick<User, 'name' | 'email' | 'password'>): User {
+  create(data: Pick<User, 'email' | 'password'>): User {
     const users = this.read();
     const user: User = {
       id: uuidv4(),
-      name: data.name,
       email: data.email,
       password: data.password,
       stress: 5,
+      busyTimes: [],
       createdAt: new Date().toISOString(),
     };
     users.push(user);
@@ -53,16 +49,6 @@ export class UserService {
     const idx = users.findIndex((u) => u.id === id);
     if (idx === -1) throw new Error('Kullanıcı bulunamadı');
     users[idx] = { ...users[idx], ...dto };
-    this.write(users);
-    const { password: _pw, ...rest } = users[idx];
-    return rest;
-  }
-
-  updateStress(id: string, stress: number): Omit<User, 'password'> {
-    const users = this.read();
-    const idx = users.findIndex((u) => u.id === id);
-    if (idx === -1) throw new Error('Kullanıcı bulunamadı');
-    users[idx].stress = stress;
     this.write(users);
     const { password: _pw, ...rest } = users[idx];
     return rest;

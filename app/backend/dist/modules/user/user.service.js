@@ -57,9 +57,6 @@ let UserService = class UserService {
     write(users) {
         fs.writeFileSync(DATA_PATH, JSON.stringify(users, null, 2));
     }
-    findAll() {
-        return this.read();
-    }
     findById(id) {
         return this.read().find((u) => u.id === id);
     }
@@ -70,10 +67,10 @@ let UserService = class UserService {
         const users = this.read();
         const user = {
             id: (0, uuid_1.v4)(),
-            name: data.name,
             email: data.email,
             password: data.password,
             stress: 5,
+            busyTimes: [],
             createdAt: new Date().toISOString(),
         };
         users.push(user);
@@ -86,16 +83,6 @@ let UserService = class UserService {
         if (idx === -1)
             throw new Error('Kullanıcı bulunamadı');
         users[idx] = { ...users[idx], ...dto };
-        this.write(users);
-        const { password: _pw, ...rest } = users[idx];
-        return rest;
-    }
-    updateStress(id, stress) {
-        const users = this.read();
-        const idx = users.findIndex((u) => u.id === id);
-        if (idx === -1)
-            throw new Error('Kullanıcı bulunamadı');
-        users[idx].stress = stress;
         this.write(users);
         const { password: _pw, ...rest } = users[idx];
         return rest;

@@ -63,48 +63,55 @@ let LessonService = class LessonService {
     findById(id) {
         return this.read().find((l) => l.id === id);
     }
-    create(userId, dto) {
+    findByName(userId, lessonName) {
+        return this.read().find((l) => l.userId === userId && l.lessonName === lessonName);
+    }
+    bulkCreate(userId, dtos) {
         const lessons = this.read();
-        const lesson = {
+        const created = dtos.map((dto) => ({
             id: (0, uuid_1.v4)(),
             userId,
             lessonName: dto.lessonName,
             difficulty: dto.difficulty,
-            examDate: dto.examDate,
-            examType: dto.examType,
-            allocatedHours: dto.allocatedHours,
-            remaining: dto.allocatedHours,
+            deadlines: dto.deadlines,
+            semester: dto.semester,
             delay: 0,
             createdAt: new Date().toISOString(),
-        };
-        lessons.push(lesson);
+        }));
+        lessons.push(...created);
         this.write(lessons);
-        return lesson;
+        return created;
     }
-    update(id, userId, dto) {
+    update(userId, dto) {
         const lessons = this.read();
-        const idx = lessons.findIndex((l) => l.id === id && l.userId === userId);
+        const idx = lessons.findIndex((l) => l.userId === userId && l.lessonName === dto.lessonName);
         if (idx === -1)
             throw new common_1.NotFoundException('Ders bulunamadı');
-        lessons[idx] = { ...lessons[idx], ...dto };
+        const { lessonName: _name, newLessonName, ...rest } = dto;
+        lessons[idx] = {
+            ...lessons[idx],
+            ...rest,
+            ...(newLessonName ? { lessonName: newLessonName } : {}),
+        };
         this.write(lessons);
         return lessons[idx];
     }
-    trackProgress(id, userId, dto) {
+    applyChecklistResult(id, userId, plannedHours, actualHours) {
         const lessons = this.read();
         const idx = lessons.findIndex((l) => l.id === id && l.userId === userId);
         if (idx === -1)
             throw new common_1.NotFoundException('Ders bulunamadı');
-        const lesson = lessons[idx];
-        const diff = dto.actualHours - dto.plannedHours;
-        if (dto.completed) {
-            if (diff > 0) {
-                lesson.delay += diff;
+        if (actualHours !== null) {
+            const R = plannedHours - actualHours;
+            if (R !== 0) {
+                lessons[idx].delay += 1;
             }
-            lesson.remaining = Math.max(0, lesson.remaining - dto.actualHours);
+        }
+        else {
+            lessons[idx].delay += 1;
         }
         this.write(lessons);
-        return lesson;
+        return lessons[idx];
     }
     remove(id, userId) {
         const lessons = this.read();

@@ -17,6 +17,22 @@ const common_1 = require("@nestjs/common");
 const checklist_service_1 = require("./checklist.service");
 const submit_checklist_dto_1 = require("./dto/submit-checklist.dto");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const class_validator_1 = require("class-validator");
+const class_transformer_1 = require("class-transformer");
+class SlotDto {
+    lessonId;
+    lessonName;
+    hours;
+}
+class CreateChecklistDto {
+    slots;
+}
+__decorate([
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => SlotDto),
+    __metadata("design:type", Array)
+], CreateChecklistDto.prototype, "slots", void 0);
 let ChecklistController = class ChecklistController {
     checklistService;
     constructor(checklistService) {
@@ -28,13 +44,16 @@ let ChecklistController = class ChecklistController {
     getToday(req) {
         return this.checklistService.getToday(req.user.sub);
     }
+    create(req, dto) {
+        return this.checklistService.createFromSlots(req.user.sub, dto.slots);
+    }
     submit(req, dto) {
         return this.checklistService.submit(req.user.sub, dto);
     }
 };
 exports.ChecklistController = ChecklistController;
 __decorate([
-    (0, common_1.Get)(),
+    (0, common_1.Get)('get'),
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -47,6 +66,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], ChecklistController.prototype, "getToday", null);
+__decorate([
+    (0, common_1.Post)('create'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, CreateChecklistDto]),
+    __metadata("design:returntype", void 0)
+], ChecklistController.prototype, "create", null);
 __decorate([
     (0, common_1.Patch)('submit'),
     __param(0, (0, common_1.Req)()),

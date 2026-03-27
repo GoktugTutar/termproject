@@ -1,14 +1,33 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ChecklistService } from './checklist.service';
 import { SubmitChecklistDto } from './dto/submit-checklist.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class SlotDto {
+  lessonId: string;
+  lessonName: string;
+  hours: number;
+}
+
+class CreateChecklistDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SlotDto)
+  slots: SlotDto[];
+}
 
 @UseGuards(JwtAuthGuard)
 @Controller('checklist')
 export class ChecklistController {
   constructor(private readonly checklistService: ChecklistService) {}
 
-  @Get()
+  /**
+   * GET /checklist/get
+   * Kullanıcının tüm checklist öğeleri (kalan süre R ile birlikte)
+   */
+  @Get('get')
   getAll(@Req() req: any) {
     return this.checklistService.getAll(req.user.sub);
   }
@@ -18,6 +37,19 @@ export class ChecklistController {
     return this.checklistService.getToday(req.user.sub);
   }
 
+  /**
+   * POST /checklist/create
+   * Planner slotlarından bugünün checklist'ini oluşturur
+   */
+  @Post('create')
+  create(@Req() req: any, @Body() dto: CreateChecklistDto) {
+    return this.checklistService.createFromSlots(req.user.sub, dto.slots);
+  }
+
+  /**
+   * PATCH /checklist/submit
+   * Gün sonu checklist sonucu gönderilir
+   */
   @Patch('submit')
   submit(@Req() req: any, @Body() dto: SubmitChecklistDto) {
     return this.checklistService.submit(req.user.sub, dto);

@@ -65,12 +65,12 @@ let ChecklistService = class ChecklistService {
     write(items) {
         fs.writeFileSync(DATA_PATH, JSON.stringify(items, null, 2));
     }
+    getAll(userId) {
+        return this.read().filter((c) => c.userId === userId);
+    }
     getToday(userId) {
         const today = new Date().toISOString().split('T')[0];
         return this.read().filter((c) => c.userId === userId && c.date === today);
-    }
-    getAll(userId) {
-        return this.read().filter((c) => c.userId === userId);
     }
     createFromSlots(userId, slots) {
         const checklists = this.read();
@@ -80,10 +80,11 @@ let ChecklistService = class ChecklistService {
             userId,
             lessonId: slot.lessonId,
             lessonName: slot.lessonName,
-            plannedHours: slot.hours,
-            actualHours: 0,
-            completed: false,
             date: today,
+            plannedHours: slot.hours,
+            actualHours: null,
+            status: 'pending',
+            remaining: null,
             createdAt: new Date().toISOString(),
         }));
         checklists.push(...newItems);
@@ -93,9 +94,7 @@ let ChecklistService = class ChecklistService {
     submit(userId, dto) {
         const items = this.read();
         const today = new Date().toISOString().split('T')[0];
-        let item = items.find((c) => c.userId === userId &&
-            c.lessonId === dto.lessonId &&
-            c.date === today);
+        let item = items.find((c) => c.userId === userId && c.lessonId === dto.lessonId && c.date === today);
         if (!item) {
             const lesson = this.lessonService.findById(dto.lessonId);
             if (!lesson)
@@ -105,25 +104,48 @@ let ChecklistService = class ChecklistService {
                 userId,
                 lessonId: dto.lessonId,
                 lessonName: lesson.lessonName,
-                plannedHours: dto.plannedHours,
-                actualHours: dto.actualHours,
-                completed: dto.completed,
                 date: today,
+                plannedHours: 0,
+                actualHours: null,
+                status: 'pending',
+                remaining: null,
                 createdAt: new Date().toISOString(),
             };
             items.push(item);
         }
-        else {
-            item.actualHours = dto.actualHours;
-            item.completed = dto.completed;
+        let remaining = null;
+        const status = dto.status;
+        if (status === 'not_done') {
+            item.actualHours = 0;
+            remaining = null;
         }
+        else if (status === 'completed') {
+            item.actualHours = item.plannedHours;
+            remaining = 0;
+        }
+        else {
+            item.actualHours = dto.actualHours ?? 0;
+            remaining = item.plannedHours - item.actualHours;
+        }
+        item.status = status;
+        item.remaining = remaining;
         this.write(items);
-        this.lessonService.trackProgress(dto.lessonId, userId, {
-            plannedHours: dto.plannedHours,
-            actualHours: dto.actualHours,
-            completed: dto.completed,
-        });
-        return item;
+        this.lessonService.applyChecklistResult(dto.lessonId, userId, item.plannedHours, status === 'not_done' ? null : item.actualHours);
+        return {
+            ...item,
+            remainingDisplay: this.formatRemaining(status, remaining),
+        };
+    }
+    formatRemaining(status, remaining) {
+        if (status === 'not_done')
+            return 'inf';
+        if (status === 'completed')
+            return '0';
+        if (remaining === null)
+            return 'inf';
+        if (remaining < 0)
+            return `-${Math.abs(remaining)}`;
+        return `${remaining}`;
     }
 };
 exports.ChecklistService = ChecklistService;

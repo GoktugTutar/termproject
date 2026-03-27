@@ -15,26 +15,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LessonController = void 0;
 const common_1 = require("@nestjs/common");
 const lesson_service_1 = require("./lesson.service");
-const create_lesson_dto_1 = require("./dto/create-lesson.dto");
 const update_lesson_dto_1 = require("./dto/update-lesson.dto");
-const track_lesson_dto_1 = require("./dto/track-lesson.dto");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 let LessonController = class LessonController {
     lessonService;
     constructor(lessonService) {
         this.lessonService = lessonService;
     }
-    create(req, dto) {
-        return this.lessonService.create(req.user.sub, dto);
+    register(req, dtos) {
+        return this.lessonService.bulkCreate(req.user.sub, dtos);
     }
     findAll(req) {
         return this.lessonService.findAllByUser(req.user.sub);
     }
-    update(req, id, dto) {
-        return this.lessonService.update(id, req.user.sub, dto);
-    }
-    trackProgress(req, id, dto) {
-        return this.lessonService.trackProgress(id, req.user.sub, dto);
+    update(req, dto) {
+        return this.lessonService.update(req.user.sub, dto);
     }
     remove(req, id) {
         this.lessonService.remove(id, req.user.sub);
@@ -43,13 +38,13 @@ let LessonController = class LessonController {
 };
 exports.LessonController = LessonController;
 __decorate([
-    (0, common_1.Post)(),
+    (0, common_1.Post)('register'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, create_lesson_dto_1.CreateLessonDto]),
+    __metadata("design:paramtypes", [Object, Array]),
     __metadata("design:returntype", void 0)
-], LessonController.prototype, "create", null);
+], LessonController.prototype, "register", null);
 __decorate([
     (0, common_1.Get)(),
     __param(0, (0, common_1.Req)()),
@@ -58,23 +53,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], LessonController.prototype, "findAll", null);
 __decorate([
-    (0, common_1.Patch)(':id'),
+    (0, common_1.Patch)('update'),
     __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Param)('id')),
-    __param(2, (0, common_1.Body)()),
+    __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, update_lesson_dto_1.UpdateLessonDto]),
+    __metadata("design:paramtypes", [Object, update_lesson_dto_1.UpdateLessonDto]),
     __metadata("design:returntype", void 0)
 ], LessonController.prototype, "update", null);
-__decorate([
-    (0, common_1.Patch)(':id/progress'),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Param)('id')),
-    __param(2, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, track_lesson_dto_1.TrackLessonDto]),
-    __metadata("design:returntype", void 0)
-], LessonController.prototype, "trackProgress", null);
 __decorate([
     (0, common_1.Delete)(':id'),
     __param(0, (0, common_1.Req)()),

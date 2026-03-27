@@ -1,7 +1,7 @@
 import { UserService } from '../user/user.service';
 import { LessonService } from '../lesson/lesson.service';
 import { HeuristicService, HeuristicResult } from '../heuristic/heuristic.service';
-export interface ScheduleSlot {
+export interface DailySlot {
     day: string;
     dayLabel: string;
     lessonId: string;
@@ -9,10 +9,15 @@ export interface ScheduleSlot {
     hours: number;
     score: number;
 }
+export interface DailyPlan {
+    date: string;
+    freeHours: number;
+    slots: DailySlot[];
+}
 export interface WeeklySchedule {
     generatedAt: string;
     weekStart: string;
-    slots: ScheduleSlot[];
+    slots: DailySlot[];
     ranked: HeuristicResult[];
 }
 export declare class PlannerService {
@@ -20,7 +25,8 @@ export declare class PlannerService {
     private readonly lessonService;
     private readonly heuristicService;
     constructor(userService: UserService, lessonService: LessonService, heuristicService: HeuristicService);
-    generateSchedule(userId: string): WeeklySchedule;
+    createWeeklyPlan(userId: string): WeeklySchedule;
+    createDailyPlan(userId: string, freeHours: number): DailyPlan;
     private buildWeekDays;
-    private getWeekStart;
+    private todayStr;
 }

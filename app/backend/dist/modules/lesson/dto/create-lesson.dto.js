@@ -9,14 +9,33 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateLessonDto = void 0;
+exports.CreateLessonDto = exports.DeadlineDto = void 0;
 const class_validator_1 = require("class-validator");
+const class_transformer_1 = require("class-transformer");
+class DeadlineDto {
+    type;
+    date;
+    label;
+}
+exports.DeadlineDto = DeadlineDto;
+__decorate([
+    (0, class_validator_1.IsIn)(['midterm', 'final', 'homework']),
+    __metadata("design:type", String)
+], DeadlineDto.prototype, "type", void 0);
+__decorate([
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], DeadlineDto.prototype, "date", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], DeadlineDto.prototype, "label", void 0);
 class CreateLessonDto {
     lessonName;
     difficulty;
-    examDate;
-    examType;
-    allocatedHours;
+    deadlines;
+    semester;
 }
 exports.CreateLessonDto = CreateLessonDto;
 __decorate([
@@ -26,20 +45,17 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsInt)(),
     (0, class_validator_1.Min)(1),
-    (0, class_validator_1.Max)(3),
+    (0, class_validator_1.Max)(5),
     __metadata("design:type", Number)
 ], CreateLessonDto.prototype, "difficulty", void 0);
 __decorate([
-    (0, class_validator_1.IsDateString)(),
-    __metadata("design:type", String)
-], CreateLessonDto.prototype, "examDate", void 0);
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => DeadlineDto),
+    __metadata("design:type", Array)
+], CreateLessonDto.prototype, "deadlines", void 0);
 __decorate([
-    (0, class_validator_1.IsIn)(['quiz', 'midterm', 'final']),
+    (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateLessonDto.prototype, "examType", void 0);
-__decorate([
-    (0, class_validator_1.IsInt)(),
-    (0, class_validator_1.Min)(1),
-    __metadata("design:type", Number)
-], CreateLessonDto.prototype, "allocatedHours", void 0);
+], CreateLessonDto.prototype, "semester", void 0);
 //# sourceMappingURL=create-lesson.dto.js.map

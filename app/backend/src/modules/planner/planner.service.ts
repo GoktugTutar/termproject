@@ -3,23 +3,37 @@ import { UserService } from '../user/user.service';
 import { LessonService } from '../lesson/lesson.service';
 import { HeuristicService, HeuristicResult } from '../heuristic/heuristic.service';
 
-export interface ScheduleSlot {
-  day: string;       // örn. "2025-03-25"
-  dayLabel: string;  // örn. "Pazartesi"
+export interface DailySlot {
+  day: string;       // YYYY-MM-DD
+  dayLabel: string;  // Ör: "Pazartesi"
   lessonId: string;
   lessonName: string;
   hours: number;
   score: number;
 }
 
+export interface DailyPlan {
+  date: string;
+  freeHours: number;
+  slots: DailySlot[];
+}
+
 export interface WeeklySchedule {
   generatedAt: string;
   weekStart: string;
-  slots: ScheduleSlot[];
+  slots: DailySlot[];
   ranked: HeuristicResult[];
 }
 
-const DAY_LABELS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const DAY_LABELS = [
+  'Pazar',
+  'Pazartesi',
+  'Salı',
+  'Çarşamba',
+  'Perşembe',
+  'Cuma',
+  'Cumartesi',
+];
 
 @Injectable()
 export class PlannerService {
@@ -29,7 +43,12 @@ export class PlannerService {
     private readonly heuristicService: HeuristicService,
   ) {}
 
-  generateSchedule(userId: string): WeeklySchedule {
+  /**
+   * POST /planner/create
+   * Heuristik kullanarak haftalık çalışma planı oluşturur.
+   * Kullanıcının busyTimes'ı göz önünde bulundurulur.
+   */
+  createWeeklyPlan(userId: string): WeeklySchedule {
     const user = this.userService.findById(userId);
     if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
 
@@ -37,7 +56,7 @@ export class PlannerService {
     if (lessons.length === 0) {
       return {
         generatedAt: new Date().toISOString(),
-        weekStart: this.getWeekStart(),
+        weekStart: this.todayStr(),
         slots: [],
         ranked: [],
       };
@@ -45,29 +64,28 @@ export class PlannerService {
 
     const today = new Date();
     const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
-
-    // Bu haftanın günlerini üret (bugünden itibaren 7 gün)
     const days = this.buildWeekDays(today);
 
-    // Her derse haftalık çalışma saatini dağıt
-    const slots: ScheduleSlot[] = [];
-    const availableHoursPerDay = 6; // günlük max çalışma saati
+    const slots: DailySlot[] = [];
+    const MAX_HOURS_PER_DAY = 6;
+    const MAX_HOURS_PER_LESSON_PER_DAY = 3;
 
-    // Her günün ne kadar dolu olduğunu tut
+    // Günlük doluluk takibi
     const dayLoad: Record<string, number> = {};
     days.forEach((d) => (dayLoad[d.date] = 0));
 
     for (const result of ranked) {
-      let remainingStudyHours = result.studyHours;
+      let remaining = result.studyHours;
 
       for (const day of days) {
-        if (remainingStudyHours <= 0) break;
-        const available = availableHoursPerDay - dayLoad[day.date];
+        if (remaining <= 0) break;
+        const available = Math.min(
+          MAX_HOURS_PER_DAY - dayLoad[day.date],
+          MAX_HOURS_PER_LESSON_PER_DAY,
+        );
         if (available <= 0) continue;
 
-        const hoursToday = Math.min(remainingStudyHours, available, 3); // günde max 3 saat aynı ders
-        if (hoursToday <= 0) continue;
-
+        const hoursToday = Math.min(remaining, available);
         slots.push({
           day: day.date,
           dayLabel: day.label,
@@ -78,7 +96,7 @@ export class PlannerService {
         });
 
         dayLoad[day.date] += hoursToday;
-        remainingStudyHours -= hoursToday;
+        remaining -= hoursToday;
       }
     }
 
@@ -90,20 +108,62 @@ export class PlannerService {
     };
   }
 
-  private buildWeekDays(from: Date): { date: string; label: string }[] {
-    const days: { date: string; label: string }[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(from);
-      d.setDate(from.getDate() + i);
-      days.push({
-        date: d.toISOString().split('T')[0],
-        label: DAY_LABELS[d.getDay()],
-      });
+  /**
+   * POST /planner/dailyupdate
+   * Kullanıcının bugünkü boş saatlerine göre günlük plan üretir.
+   */
+  createDailyPlan(userId: string, freeHours: number): DailyPlan {
+    const user = this.userService.findById(userId);
+    if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
+
+    const lessons = this.lessonService.findAllByUser(userId);
+    const today = new Date();
+    const todayStr = this.todayStr();
+    const dayLabel = DAY_LABELS[today.getDay()];
+
+    if (lessons.length === 0) {
+      return { date: todayStr, freeHours, slots: [] };
     }
-    return days;
+
+    const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
+
+    const slots: DailySlot[] = [];
+    const MAX_PER_LESSON = Math.min(3, freeHours);
+    let remainingFree = freeHours;
+
+    for (const result of ranked) {
+      if (remainingFree <= 0) break;
+      const hours = Math.min(remainingFree, MAX_PER_LESSON, result.studyHours / 7);
+      const roundedHours = Math.round(hours * 10) / 10;
+      if (roundedHours <= 0) continue;
+
+      slots.push({
+        day: todayStr,
+        dayLabel,
+        lessonId: result.lessonId,
+        lessonName: result.lessonName,
+        hours: roundedHours,
+        score: result.score,
+      });
+
+      remainingFree -= roundedHours;
+    }
+
+    return { date: todayStr, freeHours, slots };
   }
 
-  private getWeekStart(): string {
+  private buildWeekDays(from: Date): { date: string; label: string }[] {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(from);
+      d.setDate(from.getDate() + i);
+      return {
+        date: d.toISOString().split('T')[0],
+        label: DAY_LABELS[d.getDay()],
+      };
+    });
+  }
+
+  private todayStr(): string {
     return new Date().toISOString().split('T')[0];
   }
 }

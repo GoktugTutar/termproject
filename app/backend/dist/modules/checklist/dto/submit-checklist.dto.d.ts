@@ -1,6 +1,5 @@
 export declare class SubmitChecklistDto {
     lessonId: string;
-    plannedHours: number;
-    actualHours: number;
-    completed: boolean;
+    actualHours?: number;
+    status: 'early' | 'completed' | 'incomplete' | 'not_done';
 }

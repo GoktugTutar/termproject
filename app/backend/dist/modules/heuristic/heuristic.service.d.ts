@@ -9,13 +9,12 @@ export interface HeuristicResult {
     lessonName: string;
     score: number;
     studyHours: number;
+    urgencyDays: number;
 }
 export declare class HeuristicService {
-    private daysUntilExam;
+    getNextExamDate(lesson: Lesson, today: Date): string | null;
     private calcUrgency;
-    private calcRemaining;
-    private calcDelayBonus;
-    calcScore(input: HeuristicInput): number;
+    calcScore(input: HeuristicInput, allLessons: Lesson[]): number;
     calcStudyHours(lesson: Lesson, allLessons: Lesson[]): number;
     rankLessons(lessons: Lesson[], stress: number, today: Date): HeuristicResult[];
 }

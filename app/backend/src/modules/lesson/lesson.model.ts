@@ -1,15 +1,18 @@
-export type ExamType = 'quiz' | 'midterm' | 'final';
-export type Difficulty = 1 | 2 | 3; // 1=kolay, 2=orta, 3=zor
+export type DeadlineType = 'midterm' | 'final' | 'homework';
+
+export interface Deadline {
+  type: DeadlineType;
+  date: string;    // ISO date (YYYY-MM-DD)
+  label?: string;  // Ör: "HW1", "Midterm 1"
+}
 
 export interface Lesson {
   id: string;
   userId: string;
   lessonName: string;
-  difficulty: Difficulty;
-  examDate: string; // ISO date string
-  examType: ExamType;
-  allocatedHours: number; // toplam çalışma saati hedefi
-  remaining: number;      // kalan çalışma saati
-  delay: number;          // gecikme katsayısı (0'dan başlar, artabilir)
+  difficulty: number;      // D = Kredisi-zorluk (1-5)
+  deadlines: Deadline[];   // Vize, final ve homework deadlineleri
+  semester: string;        // Aldığı dönem (örn. "2024-2025 Bahar")
+  delay: number;           // B = gecikme sayacı
   createdAt: string;
 }

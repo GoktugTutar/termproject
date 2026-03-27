@@ -13,47 +13,60 @@ const W2 = 0.3;
 const W3 = 0.2;
 const W4 = 0.1;
 let HeuristicService = class HeuristicService {
-    daysUntilExam(examDate, today) {
+    getNextExamDate(lesson, today) {
+        const midterms = lesson.deadlines
+            .filter((d) => d.type === 'midterm')
+            .map((d) => d.date)
+            .sort();
+        const finals = lesson.deadlines
+            .filter((d) => d.type === 'final')
+            .map((d) => d.date)
+            .sort();
+        const todayStr = today.toISOString().split('T')[0];
+        const upcomingMidterm = midterms.find((d) => d >= todayStr);
+        if (upcomingMidterm)
+            return upcomingMidterm;
+        const upcomingFinal = finals.find((d) => d >= todayStr);
+        return upcomingFinal ?? null;
+    }
+    calcUrgency(lesson, today) {
+        const examDate = this.getNextExamDate(lesson, today);
+        if (!examDate)
+            return { U: 0, daysLeft: Infinity };
         const exam = new Date(examDate);
         const diffMs = exam.getTime() - today.getTime();
-        return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        const U = 1 / (daysLeft + 1);
+        return { U, daysLeft };
     }
-    calcUrgency(daysLeft) {
-        return 1 / (daysLeft + 1);
-    }
-    calcRemaining(lesson) {
-        if (lesson.allocatedHours === 0)
-            return 0;
-        return lesson.remaining / lesson.allocatedHours;
-    }
-    calcDelayBonus(delay) {
-        return delay > 0 ? 1 : 0;
-    }
-    calcScore(input) {
+    calcScore(input, allLessons) {
         const { lesson, stress, today } = input;
-        const daysLeft = this.daysUntilExam(lesson.examDate, today);
-        const U = this.calcUrgency(daysLeft);
-        const R = this.calcRemaining(lesson);
+        const { U, daysLeft } = this.calcUrgency(lesson, today);
         const D = lesson.difficulty;
         const S = stress;
-        const B = this.calcDelayBonus(lesson.delay);
-        const H = W1 * U + W2 * R + W3 * ((D * S) / 30) + W4 * B;
+        const B = lesson.delay > 0 ? 1 : 0;
+        const R = Math.min(1, lesson.delay / 5);
+        const H = W1 * U + W2 * R + W3 * ((D * S) / 50) + W4 * B;
+        void daysLeft;
         return Math.round(H * 1000) / 1000;
     }
     calcStudyHours(lesson, allLessons) {
         const totalDifficulty = allLessons.reduce((sum, l) => sum + l.difficulty, 0);
         if (totalDifficulty === 0)
             return 0;
-        const X = (14 * lesson.difficulty) / totalDifficulty;
-        return Math.round(X * 10) / 10;
+        return Math.round(((14 * lesson.difficulty) / totalDifficulty) * 10) / 10;
     }
     rankLessons(lessons, stress, today) {
-        const results = lessons.map((lesson) => ({
-            lessonId: lesson.id,
-            lessonName: lesson.lessonName,
-            score: this.calcScore({ lesson, stress, today }),
-            studyHours: this.calcStudyHours(lesson, lessons),
-        }));
+        const results = lessons.map((lesson) => {
+            const { daysLeft } = this.calcUrgency(lesson, today);
+            return {
+                lessonId: lesson.id,
+                lessonName: lesson.lessonName,
+                score: this.calcScore({ lesson, stress, today }, lessons),
+                studyHours: this.calcStudyHours(lesson, lessons),
+                urgencyDays: daysLeft === Infinity ? -1 : daysLeft,
+            };
+        });
         return results.sort((a, b) => b.score - a.score);
     }
 };

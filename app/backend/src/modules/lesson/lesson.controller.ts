@@ -12,7 +12,6 @@ import {
 import { LessonService } from './lesson.service';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
-import { TrackLessonDto } from './dto/track-lesson.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -20,9 +19,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}
 
-  @Post()
-  create(@Req() req: any, @Body() dto: CreateLessonDto) {
-    return this.lessonService.create(req.user.sub, dto);
+  /**
+   * POST /lesson/register
+   * JSON dizisi olarak birden fazla ders kaydeder
+   */
+  @Post('register')
+  register(@Req() req: any, @Body() dtos: CreateLessonDto[]) {
+    return this.lessonService.bulkCreate(req.user.sub, dtos);
   }
 
   @Get()
@@ -30,14 +33,13 @@ export class LessonController {
     return this.lessonService.findAllByUser(req.user.sub);
   }
 
-  @Patch(':id')
-  update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateLessonDto) {
-    return this.lessonService.update(id, req.user.sub, dto);
-  }
-
-  @Patch(':id/progress')
-  trackProgress(@Req() req: any, @Param('id') id: string, @Body() dto: TrackLessonDto) {
-    return this.lessonService.trackProgress(id, req.user.sub, dto);
+  /**
+   * PATCH /lesson/update
+   * Ders adına göre günceller
+   */
+  @Patch('update')
+  update(@Req() req: any, @Body() dto: UpdateLessonDto) {
+    return this.lessonService.update(req.user.sub, dto);
   }
 
   @Delete(':id')

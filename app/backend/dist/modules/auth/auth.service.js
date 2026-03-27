@@ -56,12 +56,10 @@ let AuthService = class AuthService {
     }
     async register(dto) {
         const existing = this.userService.findByEmail(dto.email);
-        if (existing) {
+        if (existing)
             throw new common_1.ConflictException('Bu email zaten kayıtlı');
-        }
         const hashedPassword = await bcrypt.hash(dto.password, 10);
         const user = this.userService.create({
-            name: dto.name,
             email: dto.email,
             password: hashedPassword,
         });
@@ -69,20 +67,17 @@ let AuthService = class AuthService {
     }
     async login(dto) {
         const user = this.userService.findByEmail(dto.email);
-        if (!user) {
+        if (!user)
             throw new common_1.UnauthorizedException('Email veya şifre hatalı');
-        }
         const passwordMatch = await bcrypt.compare(dto.password, user.password);
-        if (!passwordMatch) {
+        if (!passwordMatch)
             throw new common_1.UnauthorizedException('Email veya şifre hatalı');
-        }
         return this.signToken(user);
     }
     getMe(userId) {
         const user = this.userService.findById(userId);
-        if (!user) {
+        if (!user)
             throw new common_1.UnauthorizedException('Kullanıcı bulunamadı');
-        }
         const { password: _pw, ...rest } = user;
         return rest;
     }

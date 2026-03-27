@@ -1,17 +1,25 @@
-import { IsBoolean, IsInt, IsString, Min } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class SubmitChecklistDto {
   @IsString()
   lessonId: string;
 
-  @IsInt()
+  /**
+   * Kullanıcının gerçekten harcadığı saat.
+   * null göndermek "tamamlanmadı" (not_done) anlamına gelir.
+   */
+  @IsOptional()
+  @IsNumber()
   @Min(0)
-  plannedHours: number;
+  actualHours?: number;
 
-  @IsInt()
-  @Min(0)
-  actualHours: number;
-
-  @IsBoolean()
-  completed: boolean;
+  /**
+   * Kullanıcı ne yaptığını belirtir:
+   * 'early'      → erken bitti
+   * 'completed'  → tamamlandı
+   * 'incomplete' → eksik
+   * 'not_done'   → tamamlanmadı
+   */
+  @IsIn(['early', 'completed', 'incomplete', 'not_done'])
+  status: 'early' | 'completed' | 'incomplete' | 'not_done';
 }

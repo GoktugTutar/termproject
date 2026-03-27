@@ -16,54 +16,42 @@ exports.UserController = void 0;
 const common_1 = require("@nestjs/common");
 const user_service_1 = require("./user.service");
 const update_user_profile_dto_1 = require("./dto/update-user-profile.dto");
-const update_stress_dto_1 = require("./dto/update-stress.dto");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 let UserController = class UserController {
     userService;
     constructor(userService) {
         this.userService = userService;
     }
-    getProfile(req) {
+    getMe(req) {
         const user = this.userService.findById(req.user.sub);
         if (!user)
             return null;
         const { password: _pw, ...rest } = user;
         return rest;
     }
-    updateProfile(req, dto) {
+    update(req, dto) {
         return this.userService.updateProfile(req.user.sub, dto);
-    }
-    updateStress(req, dto) {
-        return this.userService.updateStress(req.user.sub, dto.stress);
     }
 };
 exports.UserController = UserController;
 __decorate([
-    (0, common_1.Get)('profile'),
+    (0, common_1.Get)('me'),
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
-], UserController.prototype, "getProfile", null);
+], UserController.prototype, "getMe", null);
 __decorate([
-    (0, common_1.Patch)('profile'),
+    (0, common_1.Patch)('update'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, update_user_profile_dto_1.UpdateUserProfileDto]),
     __metadata("design:returntype", void 0)
-], UserController.prototype, "updateProfile", null);
-__decorate([
-    (0, common_1.Patch)('stress'),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, update_stress_dto_1.UpdateStressDto]),
-    __metadata("design:returntype", void 0)
-], UserController.prototype, "updateStress", null);
+], UserController.prototype, "update", null);
 exports.UserController = UserController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
-    (0, common_1.Controller)('user'),
+    (0, common_1.Controller)('person'),
     __metadata("design:paramtypes", [user_service_1.UserService])
 ], UserController);
 //# sourceMappingURL=user.controller.js.map

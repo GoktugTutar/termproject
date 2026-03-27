@@ -14,7 +14,15 @@ const common_1 = require("@nestjs/common");
 const user_service_1 = require("../user/user.service");
 const lesson_service_1 = require("../lesson/lesson.service");
 const heuristic_service_1 = require("../heuristic/heuristic.service");
-const DAY_LABELS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const DAY_LABELS = [
+    'Pazar',
+    'Pazartesi',
+    'Salı',
+    'Çarşamba',
+    'Perşembe',
+    'Cuma',
+    'Cumartesi',
+];
 let PlannerService = class PlannerService {
     userService;
     lessonService;
@@ -24,7 +32,7 @@ let PlannerService = class PlannerService {
         this.lessonService = lessonService;
         this.heuristicService = heuristicService;
     }
-    generateSchedule(userId) {
+    createWeeklyPlan(userId) {
         const user = this.userService.findById(userId);
         if (!user)
             throw new common_1.NotFoundException('Kullanıcı bulunamadı');
@@ -32,7 +40,7 @@ let PlannerService = class PlannerService {
         if (lessons.length === 0) {
             return {
                 generatedAt: new Date().toISOString(),
-                weekStart: this.getWeekStart(),
+                weekStart: this.todayStr(),
                 slots: [],
                 ranked: [],
             };
@@ -41,20 +49,19 @@ let PlannerService = class PlannerService {
         const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
         const days = this.buildWeekDays(today);
         const slots = [];
-        const availableHoursPerDay = 6;
+        const MAX_HOURS_PER_DAY = 6;
+        const MAX_HOURS_PER_LESSON_PER_DAY = 3;
         const dayLoad = {};
         days.forEach((d) => (dayLoad[d.date] = 0));
         for (const result of ranked) {
-            let remainingStudyHours = result.studyHours;
+            let remaining = result.studyHours;
             for (const day of days) {
-                if (remainingStudyHours <= 0)
+                if (remaining <= 0)
                     break;
-                const available = availableHoursPerDay - dayLoad[day.date];
+                const available = Math.min(MAX_HOURS_PER_DAY - dayLoad[day.date], MAX_HOURS_PER_LESSON_PER_DAY);
                 if (available <= 0)
                     continue;
-                const hoursToday = Math.min(remainingStudyHours, available, 3);
-                if (hoursToday <= 0)
-                    continue;
+                const hoursToday = Math.min(remaining, available);
                 slots.push({
                     day: day.date,
                     dayLabel: day.label,
@@ -64,7 +71,7 @@ let PlannerService = class PlannerService {
                     score: result.score,
                 });
                 dayLoad[day.date] += hoursToday;
-                remainingStudyHours -= hoursToday;
+                remaining -= hoursToday;
             }
         }
         return {
@@ -74,19 +81,51 @@ let PlannerService = class PlannerService {
             ranked,
         };
     }
+    createDailyPlan(userId, freeHours) {
+        const user = this.userService.findById(userId);
+        if (!user)
+            throw new common_1.NotFoundException('Kullanıcı bulunamadı');
+        const lessons = this.lessonService.findAllByUser(userId);
+        const today = new Date();
+        const todayStr = this.todayStr();
+        const dayLabel = DAY_LABELS[today.getDay()];
+        if (lessons.length === 0) {
+            return { date: todayStr, freeHours, slots: [] };
+        }
+        const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
+        const slots = [];
+        const MAX_PER_LESSON = Math.min(3, freeHours);
+        let remainingFree = freeHours;
+        for (const result of ranked) {
+            if (remainingFree <= 0)
+                break;
+            const hours = Math.min(remainingFree, MAX_PER_LESSON, result.studyHours / 7);
+            const roundedHours = Math.round(hours * 10) / 10;
+            if (roundedHours <= 0)
+                continue;
+            slots.push({
+                day: todayStr,
+                dayLabel,
+                lessonId: result.lessonId,
+                lessonName: result.lessonName,
+                hours: roundedHours,
+                score: result.score,
+            });
+            remainingFree -= roundedHours;
+        }
+        return { date: todayStr, freeHours, slots };
+    }
     buildWeekDays(from) {
-        const days = [];
-        for (let i = 0; i < 7; i++) {
+        return Array.from({ length: 7 }, (_, i) => {
             const d = new Date(from);
             d.setDate(from.getDate() + i);
-            days.push({
+            return {
                 date: d.toISOString().split('T')[0],
                 label: DAY_LABELS[d.getDay()],
-            });
-        }
-        return days;
+            };
+        });
     }
-    getWeekStart() {
+    todayStr() {
         return new Date().toISOString().split('T')[0];
     }
 };

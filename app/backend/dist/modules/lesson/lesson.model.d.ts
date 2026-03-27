@@ -1,14 +1,16 @@
-export type ExamType = 'quiz' | 'midterm' | 'final';
-export type Difficulty = 1 | 2 | 3;
+export type DeadlineType = 'midterm' | 'final' | 'homework';
+export interface Deadline {
+    type: DeadlineType;
+    date: string;
+    label?: string;
+}
 export interface Lesson {
     id: string;
     userId: string;
     lessonName: string;
-    difficulty: Difficulty;
-    examDate: string;
-    examType: ExamType;
-    allocatedHours: number;
-    remaining: number;
+    difficulty: number;
+    deadlines: Deadline[];
+    semester: string;
     delay: number;
     createdAt: string;
 }

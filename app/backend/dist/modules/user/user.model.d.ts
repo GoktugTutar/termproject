@@ -1,10 +1,11 @@
 export interface User {
     id: string;
-    name: string;
     email: string;
     password: string;
-    department?: string;
-    grade?: string;
+    name?: string;
+    gpa?: number;
+    semester?: string;
     stress: number;
+    busyTimes: string[];
     createdAt: string;
 }

@@ -6,12 +6,15 @@ export declare class ChecklistService {
     constructor(lessonService: LessonService);
     private read;
     private write;
-    getToday(userId: string): ChecklistItem[];
     getAll(userId: string): ChecklistItem[];
+    getToday(userId: string): ChecklistItem[];
     createFromSlots(userId: string, slots: {
         lessonId: string;
         lessonName: string;
         hours: number;
     }[]): ChecklistItem[];
-    submit(userId: string, dto: SubmitChecklistDto): ChecklistItem;
+    submit(userId: string, dto: SubmitChecklistDto): ChecklistItem & {
+        remainingDisplay: string;
+    };
+    private formatRemaining;
 }

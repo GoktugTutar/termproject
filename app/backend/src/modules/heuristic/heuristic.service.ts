@@ -3,102 +3,119 @@ import { Lesson } from '../lesson/lesson.model';
 
 export interface HeuristicInput {
   lesson: Lesson;
-  stress: number;    // kullanıcının stress seviyesi (0-10)
+  stress: number;  // S = kullanıcı stres seviyesi (0-10)
   today: Date;
 }
 
 export interface HeuristicResult {
   lessonId: string;
   lessonName: string;
-  score: number;     // H skoru
-  studyHours: number; // X çalışma saati
+  score: number;       // H skoru
+  studyHours: number;  // X = haftalık çalışma saati
+  urgencyDays: number; // Sınava kaç gün kaldığı
 }
 
 // Ağırlıklar
 const W1 = 0.4; // urgency
-const W2 = 0.3; // remaining
+const W2 = 0.3; // remaining (normalized)
 const W3 = 0.2; // difficulty * stress
 const W4 = 0.1; // delay bonus
 
 @Injectable()
 export class HeuristicService {
   /**
-   * Sınava kaç gün kaldığını hesaplar
+   * Bir dersin bir sonraki sınavına kaç gün kaldığını hesaplar.
+   * Önce vize tarihine bakar; vize geçmişse finale bakar.
+   * Homework deadline'ları ayrıca değerlendirilmez (urgency için exam kullanılır).
    */
-  private daysUntilExam(examDate: string, today: Date): number {
+  getNextExamDate(lesson: Lesson, today: Date): string | null {
+    const midterms = lesson.deadlines
+      .filter((d) => d.type === 'midterm')
+      .map((d) => d.date)
+      .sort();
+
+    const finals = lesson.deadlines
+      .filter((d) => d.type === 'final')
+      .map((d) => d.date)
+      .sort();
+
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Geçmemiş vize varsa onu kullan
+    const upcomingMidterm = midterms.find((d) => d >= todayStr);
+    if (upcomingMidterm) return upcomingMidterm;
+
+    // Yoksa geçmemiş finali kullan
+    const upcomingFinal = finals.find((d) => d >= todayStr);
+    return upcomingFinal ?? null;
+  }
+
+  /**
+   * U = aciliyet: sınava ne kadar az gün kaldıysa o kadar yüksek
+   * U = 1 / (daysLeft + 1)
+   * Sınav yoksa U = 0
+   */
+  private calcUrgency(lesson: Lesson, today: Date): { U: number; daysLeft: number } {
+    const examDate = this.getNextExamDate(lesson, today);
+    if (!examDate) return { U: 0, daysLeft: Infinity };
+
     const exam = new Date(examDate);
     const diffMs = exam.getTime() - today.getTime();
-    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    const U = 1 / (daysLeft + 1);
+    return { U, daysLeft };
   }
 
   /**
-   * Urgency (U): Sınava ne kadar az gün kaldıysa urgency o kadar yüksek
-   * U = 1 / (daysLeft + 1)
-   */
-  private calcUrgency(daysLeft: number): number {
-    return 1 / (daysLeft + 1);
-  }
-
-  /**
-   * Remaining (R): Kalan çalışma saatinin toplam saate oranı
-   * R = remaining / allocatedHours
-   */
-  private calcRemaining(lesson: Lesson): number {
-    if (lesson.allocatedHours === 0) return 0;
-    return lesson.remaining / lesson.allocatedHours;
-  }
-
-  /**
-   * Delay bonus (B): Gecikmesi olan derse ekstra öncelik
+   * H = w1*U + w2*R + w3*(D*S/50) + w4*B
+   *
+   * R = remaining normalized: D / sum(D) * 14 çalışma saatine karşı kalan
+   *     Basit hesap: delay yoksa R = 0.5 (nötr), delay arttıkça artar
+   * D = difficulty (1-5)
+   * S = stress (0-10)
    * B = delay > 0 ? 1 : 0
    */
-  private calcDelayBonus(delay: number): number {
-    return delay > 0 ? 1 : 0;
-  }
-
-  /**
-   * H = w1*U + w2*R + w3*(D*S/30) + w4*B
-   * D = difficulty (1-3), S = stress (0-10)
-   */
-  calcScore(input: HeuristicInput): number {
+  calcScore(input: HeuristicInput, allLessons: Lesson[]): number {
     const { lesson, stress, today } = input;
-    const daysLeft = this.daysUntilExam(lesson.examDate, today);
 
-    const U = this.calcUrgency(daysLeft);
-    const R = this.calcRemaining(lesson);
+    const { U, daysLeft } = this.calcUrgency(lesson, today);
     const D = lesson.difficulty;
     const S = stress;
-    const B = this.calcDelayBonus(lesson.delay);
+    const B = lesson.delay > 0 ? 1 : 0;
 
-    const H = W1 * U + W2 * R + W3 * ((D * S) / 30) + W4 * B;
+    // R: delay tabanlı kalan iş yükü göstergesi (0-1 arası normalize)
+    const R = Math.min(1, lesson.delay / 5);
+
+    const H = W1 * U + W2 * R + W3 * ((D * S) / 50) + W4 * B;
+
+    void daysLeft; // kullanıldı (urgencyDays için aşağıda tekrar çağırılıyor)
     return Math.round(H * 1000) / 1000;
   }
 
   /**
-   * X = 14 * D / toplam ders zorluk katsayısı toplamı
+   * X = 14 * D / toplam ders D katsayısı toplamı
    * Her ders için haftalık ayrılacak saat
    */
   calcStudyHours(lesson: Lesson, allLessons: Lesson[]): number {
     const totalDifficulty = allLessons.reduce((sum, l) => sum + l.difficulty, 0);
     if (totalDifficulty === 0) return 0;
-    const X = (14 * lesson.difficulty) / totalDifficulty;
-    return Math.round(X * 10) / 10;
+    return Math.round(((14 * lesson.difficulty) / totalDifficulty) * 10) / 10;
   }
 
   /**
    * Tüm dersleri skorla, sırala ve çalışma saatlerini hesapla
    */
-  rankLessons(
-    lessons: Lesson[],
-    stress: number,
-    today: Date,
-  ): HeuristicResult[] {
-    const results: HeuristicResult[] = lessons.map((lesson) => ({
-      lessonId: lesson.id,
-      lessonName: lesson.lessonName,
-      score: this.calcScore({ lesson, stress, today }),
-      studyHours: this.calcStudyHours(lesson, lessons),
-    }));
+  rankLessons(lessons: Lesson[], stress: number, today: Date): HeuristicResult[] {
+    const results: HeuristicResult[] = lessons.map((lesson) => {
+      const { daysLeft } = this.calcUrgency(lesson, today);
+      return {
+        lessonId: lesson.id,
+        lessonName: lesson.lessonName,
+        score: this.calcScore({ lesson, stress, today }, lessons),
+        studyHours: this.calcStudyHours(lesson, lessons),
+        urgencyDays: daysLeft === Infinity ? -1 : daysLeft,
+      };
+    });
 
     return results.sort((a, b) => b.score - a.score);
   }

@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { Lesson } from './lesson.model';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
-import { TrackLessonDto } from './dto/track-lesson.dto';
 
 const DATA_PATH = path.join(__dirname, '../../data/lessons.json');
 
@@ -31,59 +30,88 @@ export class LessonService {
     return this.read().find((l) => l.id === id);
   }
 
-  create(userId: string, dto: CreateLessonDto): Lesson {
+  findByName(userId: string, lessonName: string): Lesson | undefined {
+    return this.read().find(
+      (l) => l.userId === userId && l.lessonName === lessonName,
+    );
+  }
+
+  /**
+   * Toplu ders kaydı - JSON dizisi olarak gelir
+   */
+  bulkCreate(userId: string, dtos: CreateLessonDto[]): Lesson[] {
     const lessons = this.read();
-    const lesson: Lesson = {
+    const created: Lesson[] = dtos.map((dto) => ({
       id: uuidv4(),
       userId,
       lessonName: dto.lessonName,
-      difficulty: dto.difficulty as 1 | 2 | 3,
-      examDate: dto.examDate,
-      examType: dto.examType as 'quiz' | 'midterm' | 'final',
-      allocatedHours: dto.allocatedHours,
-      remaining: dto.allocatedHours,
+      difficulty: dto.difficulty,
+      deadlines: dto.deadlines,
+      semester: dto.semester,
       delay: 0,
       createdAt: new Date().toISOString(),
-    };
-    lessons.push(lesson);
+    }));
+    lessons.push(...created);
     this.write(lessons);
-    return lesson;
+    return created;
   }
 
-  update(id: string, userId: string, dto: UpdateLessonDto): Lesson {
+  /**
+   * Ders adıyla güncelleme
+   */
+  update(userId: string, dto: UpdateLessonDto): Lesson {
     const lessons = this.read();
-    const idx = lessons.findIndex((l) => l.id === id && l.userId === userId);
+    const idx = lessons.findIndex(
+      (l) => l.userId === userId && l.lessonName === dto.lessonName,
+    );
     if (idx === -1) throw new NotFoundException('Ders bulunamadı');
-    lessons[idx] = { ...lessons[idx], ...dto } as Lesson;
+
+    const { lessonName: _name, newLessonName, ...rest } = dto;
+    lessons[idx] = {
+      ...lessons[idx],
+      ...rest,
+      ...(newLessonName ? { lessonName: newLessonName } : {}),
+    };
     this.write(lessons);
     return lessons[idx];
   }
 
-  trackProgress(id: string, userId: string, dto: TrackLessonDto): Lesson {
+  /**
+   * Checklist submit sonrası delay güncelleme
+   * Erken bitmesi veya aşılması her ikisi de delay'i artırır
+   */
+  applyChecklistResult(
+    id: string,
+    userId: string,
+    plannedHours: number,
+    actualHours: number | null,
+  ): Lesson {
     const lessons = this.read();
     const idx = lessons.findIndex((l) => l.id === id && l.userId === userId);
     if (idx === -1) throw new NotFoundException('Ders bulunamadı');
 
-    const lesson = lessons[idx];
-    const diff = dto.actualHours - dto.plannedHours;
-
-    if (dto.completed) {
-      // Gerçek süre planlanan süreden fazlaysa delay artar
-      if (diff > 0) {
-        lesson.delay += diff;
+    if (actualHours !== null) {
+      const R = plannedHours - actualHours;
+      // Herhangi bir sapma (erken veya geç) delay'i artırır
+      if (R !== 0) {
+        lessons[idx].delay += 1;
       }
-      // Kalan saati güncelle
-      lesson.remaining = Math.max(0, lesson.remaining - dto.actualHours);
+    } else {
+      // Tamamlanmadı (not_done) - delay artar
+      lessons[idx].delay += 1;
     }
 
     this.write(lessons);
-    return lesson;
+    return lessons[idx];
   }
 
   remove(id: string, userId: string): void {
     const lessons = this.read();
-    const filtered = lessons.filter((l) => !(l.id === id && l.userId === userId));
-    if (filtered.length === lessons.length) throw new NotFoundException('Ders bulunamadı');
+    const filtered = lessons.filter(
+      (l) => !(l.id === id && l.userId === userId),
+    );
+    if (filtered.length === lessons.length)
+      throw new NotFoundException('Ders bulunamadı');
     this.write(filtered);
   }
 }

@@ -1,7 +1,8 @@
+import { DeadlineDto } from './create-lesson.dto';
 export declare class UpdateLessonDto {
-    lessonName?: string;
+    lessonName: string;
+    newLessonName?: string;
     difficulty?: number;
-    examDate?: string;
-    examType?: string;
-    allocatedHours?: number;
+    deadlines?: DeadlineDto[];
+    semester?: string;
 }

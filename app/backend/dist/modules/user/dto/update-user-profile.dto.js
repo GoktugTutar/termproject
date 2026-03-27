@@ -13,8 +13,10 @@ exports.UpdateUserProfileDto = void 0;
 const class_validator_1 = require("class-validator");
 class UpdateUserProfileDto {
     name;
-    department;
-    grade;
+    gpa;
+    semester;
+    stress;
+    busyTimes;
 }
 exports.UpdateUserProfileDto = UpdateUserProfileDto;
 __decorate([
@@ -24,12 +26,27 @@ __decorate([
 ], UpdateUserProfileDto.prototype, "name", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], UpdateUserProfileDto.prototype, "department", void 0);
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(4),
+    __metadata("design:type", Number)
+], UpdateUserProfileDto.prototype, "gpa", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], UpdateUserProfileDto.prototype, "grade", void 0);
+], UpdateUserProfileDto.prototype, "semester", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(10),
+    __metadata("design:type", Number)
+], UpdateUserProfileDto.prototype, "stress", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], UpdateUserProfileDto.prototype, "busyTimes", void 0);
 //# sourceMappingURL=update-user-profile.dto.js.map
