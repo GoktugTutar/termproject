@@ -24,6 +24,19 @@ class SlotDto {
     lessonName;
     hours;
 }
+__decorate([
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], SlotDto.prototype, "lessonId", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], SlotDto.prototype, "lessonName", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], SlotDto.prototype, "hours", void 0);
 class CreateChecklistDto {
     slots;
 }

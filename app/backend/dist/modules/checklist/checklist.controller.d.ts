@@ -11,11 +11,11 @@ declare class CreateChecklistDto {
 export declare class ChecklistController {
     private readonly checklistService;
     constructor(checklistService: ChecklistService);
-    getAll(req: any): import("./checklist.model").ChecklistItem[];
-    getToday(req: any): import("./checklist.model").ChecklistItem[];
-    create(req: any, dto: CreateChecklistDto): import("./checklist.model").ChecklistItem[];
-    submit(req: any, dto: SubmitChecklistDto): import("./checklist.model").ChecklistItem & {
+    getAll(req: any): Promise<import("./checklist.model").ChecklistItem[]>;
+    getToday(req: any): Promise<import("./checklist.model").ChecklistItem[]>;
+    create(req: any, dto: CreateChecklistDto): Promise<import("./checklist.model").ChecklistItem[]>;
+    submit(req: any, dto: SubmitChecklistDto): Promise<import("./checklist.model").ChecklistItem & {
         remainingDisplay: string;
-    };
+    }>;
 }
 export {};

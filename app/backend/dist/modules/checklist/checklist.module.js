@@ -8,6 +8,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChecklistModule = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
+const checklist_entity_1 = require("./checklist.entity");
 const checklist_service_1 = require("./checklist.service");
 const checklist_controller_1 = require("./checklist.controller");
 const lesson_module_1 = require("../lesson/lesson.module");
@@ -16,7 +18,7 @@ let ChecklistModule = class ChecklistModule {
 exports.ChecklistModule = ChecklistModule;
 exports.ChecklistModule = ChecklistModule = __decorate([
     (0, common_1.Module)({
-        imports: [lesson_module_1.LessonModule],
+        imports: [typeorm_1.TypeOrmModule.forFeature([checklist_entity_1.ChecklistEntity]), lesson_module_1.LessonModule],
         providers: [checklist_service_1.ChecklistService],
         controllers: [checklist_controller_1.ChecklistController],
     })

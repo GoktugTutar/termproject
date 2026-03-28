@@ -25,8 +25,8 @@ export declare class PlannerService {
     private readonly lessonService;
     private readonly heuristicService;
     constructor(userService: UserService, lessonService: LessonService, heuristicService: HeuristicService);
-    createWeeklyPlan(userId: string): WeeklySchedule;
-    createDailyPlan(userId: string, freeHours: number): DailyPlan;
+    createWeeklyPlan(userId: string): Promise<WeeklySchedule>;
+    createDailyPlan(userId: string, freeHours: number): Promise<DailyPlan>;
     private buildWeekDays;
     private todayStr;
 }

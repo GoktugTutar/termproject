@@ -12,5 +12,5 @@ export interface Lesson {
     deadlines: Deadline[];
     semester: string;
     delay: number;
-    createdAt: string;
+    createdAt: Date | string;
 }

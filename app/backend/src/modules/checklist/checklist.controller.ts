@@ -2,12 +2,18 @@ import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/comm
 import { ChecklistService } from './checklist.service';
 import { SubmitChecklistDto } from './dto/submit-checklist.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IsArray, ValidateNested } from 'class-validator';
+import { IsArray, IsNumber, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class SlotDto {
+  @IsString()
   lessonId: string;
+
+  @IsString()
   lessonName: string;
+
+  @IsNumber()
+  @Min(0)
   hours: number;
 }
 

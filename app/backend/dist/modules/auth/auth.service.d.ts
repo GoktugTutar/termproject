@@ -13,6 +13,6 @@ export declare class AuthService {
     login(dto: LoginDto): Promise<{
         access_token: string;
     }>;
-    getMe(userId: string): Omit<User, 'password'>;
+    getMe(userId: string): Promise<Omit<User, 'password'>>;
     private signToken;
 }

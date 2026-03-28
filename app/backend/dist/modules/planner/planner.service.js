@@ -32,11 +32,11 @@ let PlannerService = class PlannerService {
         this.lessonService = lessonService;
         this.heuristicService = heuristicService;
     }
-    createWeeklyPlan(userId) {
-        const user = this.userService.findById(userId);
+    async createWeeklyPlan(userId) {
+        const user = await this.userService.findById(userId);
         if (!user)
             throw new common_1.NotFoundException('Kullanıcı bulunamadı');
-        const lessons = this.lessonService.findAllByUser(userId);
+        const lessons = await this.lessonService.findAllByUser(userId);
         if (lessons.length === 0) {
             return {
                 generatedAt: new Date().toISOString(),
@@ -81,11 +81,11 @@ let PlannerService = class PlannerService {
             ranked,
         };
     }
-    createDailyPlan(userId, freeHours) {
-        const user = this.userService.findById(userId);
+    async createDailyPlan(userId, freeHours) {
+        const user = await this.userService.findById(userId);
         if (!user)
             throw new common_1.NotFoundException('Kullanıcı bulunamadı');
-        const lessons = this.lessonService.findAllByUser(userId);
+        const lessons = await this.lessonService.findAllByUser(userId);
         const today = new Date();
         const todayStr = this.todayStr();
         const dayLabel = DAY_LABELS[today.getDay()];

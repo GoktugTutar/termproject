@@ -9,8 +9,8 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get('me')
-  getMe(@Req() req: any) {
-    const user = this.userService.findById(req.user.sub);
+  async getMe(@Req() req: any) {
+    const user = await this.userService.findById(req.user.sub);
     if (!user) return null;
     const { password: _pw, ...rest } = user;
     return rest;

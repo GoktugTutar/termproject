@@ -14,5 +14,5 @@ export interface Lesson {
   deadlines: Deadline[];   // Vize, final ve homework deadlineleri
   semester: string;        // Aldığı dönem (örn. "2024-2025 Bahar")
   delay: number;           // B = gecikme sayacı
-  createdAt: string;
+  createdAt: Date | string;
 }

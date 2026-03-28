@@ -55,18 +55,18 @@ let AuthService = class AuthService {
         this.jwtService = jwtService;
     }
     async register(dto) {
-        const existing = this.userService.findByEmail(dto.email);
+        const existing = await this.userService.findByEmail(dto.email);
         if (existing)
             throw new common_1.ConflictException('Bu email zaten kayıtlı');
         const hashedPassword = await bcrypt.hash(dto.password, 10);
-        const user = this.userService.create({
+        const user = await this.userService.create({
             email: dto.email,
             password: hashedPassword,
         });
         return this.signToken(user);
     }
     async login(dto) {
-        const user = this.userService.findByEmail(dto.email);
+        const user = await this.userService.findByEmail(dto.email);
         if (!user)
             throw new common_1.UnauthorizedException('Email veya şifre hatalı');
         const passwordMatch = await bcrypt.compare(dto.password, user.password);
@@ -74,8 +74,8 @@ let AuthService = class AuthService {
             throw new common_1.UnauthorizedException('Email veya şifre hatalı');
         return this.signToken(user);
     }
-    getMe(userId) {
-        const user = this.userService.findById(userId);
+    async getMe(userId) {
+        const user = await this.userService.findById(userId);
         if (!user)
             throw new common_1.UnauthorizedException('Kullanıcı bulunamadı');
         const { password: _pw, ...rest } = user;

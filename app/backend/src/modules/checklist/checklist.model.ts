@@ -18,5 +18,5 @@ export interface ChecklistItem {
   actualHours: number | null;// Kullanıcının girdiği gerçek süre
   status: ChecklistStatus;
   remaining: number | null;  // R = plannedHours - actualHours (negatif = erken)
-  createdAt: string;
+  createdAt: Date | string;
 }

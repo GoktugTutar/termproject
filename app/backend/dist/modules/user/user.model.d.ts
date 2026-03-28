@@ -7,5 +7,5 @@ export interface User {
     semester?: string;
     stress: number;
     busyTimes: string[];
-    createdAt: string;
+    createdAt: Date | string;
 }

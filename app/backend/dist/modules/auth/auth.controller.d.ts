@@ -10,5 +10,5 @@ export declare class AuthController {
     login(dto: LoginDto): Promise<{
         access_token: string;
     }>;
-    getMe(req: any): Omit<import("../user/user.model").User, "password">;
+    getMe(req: any): Promise<Omit<import("../user/user.model").User, "password">>;
 }

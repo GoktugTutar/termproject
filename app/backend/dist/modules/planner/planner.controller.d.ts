@@ -5,7 +5,7 @@ declare class DailyUpdateDto {
 export declare class PlannerController {
     private readonly plannerService;
     constructor(plannerService: PlannerService);
-    createWeeklyPlan(req: any): import("./planner.service").WeeklySchedule;
-    dailyUpdate(req: any, dto: DailyUpdateDto): import("./planner.service").DailyPlan;
+    createWeeklyPlan(req: any): Promise<import("./planner.service").WeeklySchedule>;
+    dailyUpdate(req: any, dto: DailyUpdateDto): Promise<import("./planner.service").DailyPlan>;
 }
 export {};

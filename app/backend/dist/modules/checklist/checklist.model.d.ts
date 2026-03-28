@@ -9,5 +9,5 @@ export interface ChecklistItem {
     actualHours: number | null;
     status: ChecklistStatus;
     remaining: number | null;
-    createdAt: string;
+    createdAt: Date | string;
 }

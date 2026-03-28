@@ -18,11 +18,11 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<{ access_token: string }> {
-    const existing = this.userService.findByEmail(dto.email);
+    const existing = await this.userService.findByEmail(dto.email);
     if (existing) throw new ConflictException('Bu email zaten kayıtlı');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const user = this.userService.create({
+    const user = await this.userService.create({
       email: dto.email,
       password: hashedPassword,
     });
@@ -31,7 +31,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<{ access_token: string }> {
-    const user = this.userService.findByEmail(dto.email);
+    const user = await this.userService.findByEmail(dto.email);
     if (!user) throw new UnauthorizedException('Email veya şifre hatalı');
 
     const passwordMatch = await bcrypt.compare(dto.password, user.password);
@@ -40,8 +40,8 @@ export class AuthService {
     return this.signToken(user);
   }
 
-  getMe(userId: string): Omit<User, 'password'> {
-    const user = this.userService.findById(userId);
+  async getMe(userId: string): Promise<Omit<User, 'password'>> {
+    const user = await this.userService.findById(userId);
     if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
     const { password: _pw, ...rest } = user;
     return rest;

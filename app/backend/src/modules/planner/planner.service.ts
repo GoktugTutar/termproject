@@ -43,16 +43,11 @@ export class PlannerService {
     private readonly heuristicService: HeuristicService,
   ) {}
 
-  /**
-   * POST /planner/create
-   * Heuristik kullanarak haftalık çalışma planı oluşturur.
-   * Kullanıcının busyTimes'ı göz önünde bulundurulur.
-   */
-  createWeeklyPlan(userId: string): WeeklySchedule {
-    const user = this.userService.findById(userId);
+  async createWeeklyPlan(userId: string): Promise<WeeklySchedule> {
+    const user = await this.userService.findById(userId);
     if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
 
-    const lessons = this.lessonService.findAllByUser(userId);
+    const lessons = await this.lessonService.findAllByUser(userId);
     if (lessons.length === 0) {
       return {
         generatedAt: new Date().toISOString(),
@@ -70,7 +65,6 @@ export class PlannerService {
     const MAX_HOURS_PER_DAY = 6;
     const MAX_HOURS_PER_LESSON_PER_DAY = 3;
 
-    // Günlük doluluk takibi
     const dayLoad: Record<string, number> = {};
     days.forEach((d) => (dayLoad[d.date] = 0));
 
@@ -108,15 +102,11 @@ export class PlannerService {
     };
   }
 
-  /**
-   * POST /planner/dailyupdate
-   * Kullanıcının bugünkü boş saatlerine göre günlük plan üretir.
-   */
-  createDailyPlan(userId: string, freeHours: number): DailyPlan {
-    const user = this.userService.findById(userId);
+  async createDailyPlan(userId: string, freeHours: number): Promise<DailyPlan> {
+    const user = await this.userService.findById(userId);
     if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
 
-    const lessons = this.lessonService.findAllByUser(userId);
+    const lessons = await this.lessonService.findAllByUser(userId);
     const today = new Date();
     const todayStr = this.todayStr();
     const dayLabel = DAY_LABELS[today.getDay()];

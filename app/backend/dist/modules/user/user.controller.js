@@ -22,8 +22,8 @@ let UserController = class UserController {
     constructor(userService) {
         this.userService = userService;
     }
-    getMe(req) {
-        const user = this.userService.findById(req.user.sub);
+    async getMe(req) {
+        const user = await this.userService.findById(req.user.sub);
         if (!user)
             return null;
         const { password: _pw, ...rest } = user;
@@ -39,7 +39,7 @@ __decorate([
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], UserController.prototype, "getMe", null);
 __decorate([
     (0, common_1.Patch)('update'),
