@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Lesson } from '../lesson/lesson.model';
+import { ChecklistItem } from '../checklist/checklist.model';
 
 export interface HeuristicInput {
   lesson: Lesson;
   stress: number;  // S = kullanıcı stres seviyesi (0-10)
   today: Date;
+  remainingHours: number; // sum of (plannedHours - actualHours) from checklist
 }
 
 export interface HeuristicResult {
@@ -75,20 +77,19 @@ export class HeuristicService {
    * S = stress (0-10)
    * B = delay > 0 ? 1 : 0
    */
-  calcScore(input: HeuristicInput, allLessons: Lesson[]): number {
-    const { lesson, stress, today } = input;
+  calcScore(input: HeuristicInput): number {
+    const { lesson, stress, today, remainingHours } = input;
 
-    const { U, daysLeft } = this.calcUrgency(lesson, today);
+    const { U } = this.calcUrgency(lesson, today);
     const D = lesson.difficulty;
     const S = stress;
     const B = lesson.delay > 0 ? 1 : 0;
 
-    // R: delay tabanlı kalan iş yükü göstergesi (0-1 arası normalize)
-    const R = Math.min(1, lesson.delay / 5);
+    // Normalize remainingHours to 0-1 (e.g. cap at 10 hours)
+    const R = Math.min(1, Math.max(0, remainingHours / 10));
 
     const H = W1 * U + W2 * R + W3 * ((D * S) / 50) + W4 * B;
 
-    void daysLeft; // kullanıldı (urgencyDays için aşağıda tekrar çağırılıyor)
     return Math.round(H * 1000) / 1000;
   }
 
@@ -105,18 +106,29 @@ export class HeuristicService {
   /**
    * Tüm dersleri skorla, sırala ve çalışma saatlerini hesapla
    */
-  rankLessons(lessons: Lesson[], stress: number, today: Date): HeuristicResult[] {
-    const results: HeuristicResult[] = lessons.map((lesson) => {
+  rankLessons(
+  lessons: Lesson[],
+  stress: number,
+  today: Date,
+  checklistItems: ChecklistItem[]  // injected from checklist module
+): HeuristicResult[] {
+  return lessons
+    .map((lesson) => {
       const { daysLeft } = this.calcUrgency(lesson, today);
+
+      // Sum remaining hours for this lesson from checklist
+      const remainingHours = checklistItems
+        .filter((c) => c.lessonId === lesson.id && c.remaining !== null)
+        .reduce((sum, c) => sum + (c.remaining ?? 0), 0);
+
       return {
         lessonId: lesson.id,
         lessonName: lesson.lessonName,
-        score: this.calcScore({ lesson, stress, today }, lessons),
+        score: this.calcScore({ lesson, stress, today, remainingHours }),
         studyHours: this.calcStudyHours(lesson, lessons),
         urgencyDays: daysLeft === Infinity ? -1 : daysLeft,
       };
-    });
-
-    return results.sort((a, b) => b.score - a.score);
-  }
+    })
+    .sort((a, b) => b.score - a.score);
+}
 }
