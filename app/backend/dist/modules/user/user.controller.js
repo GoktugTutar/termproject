@@ -27,6 +27,9 @@ let UserController = class UserController {
     updateProfile(user, dto) {
         return this.userService.updateProfile(user.id, dto);
     }
+    delete(user) {
+        return this.userService.delete(user.id);
+    }
 };
 exports.UserController = UserController;
 __decorate([
@@ -38,6 +41,14 @@ __decorate([
         update_user_profile_dto_js_1.UpdateUserProfileDto]),
     __metadata("design:returntype", void 0)
 ], UserController.prototype, "updateProfile", null);
+__decorate([
+    (0, common_1.Delete)('delete'),
+    (0, common_1.HttpCode)(204),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity]),
+    __metadata("design:returntype", void 0)
+], UserController.prototype, "delete", null);
 exports.UserController = UserController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard),
     (0, common_1.Controller)('person'),

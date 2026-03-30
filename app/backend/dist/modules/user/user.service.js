@@ -17,10 +17,19 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const user_entity_js_1 = require("./user.entity.js");
+const lesson_entity_js_1 = require("../lesson/lesson.entity.js");
+const checklist_entity_js_1 = require("../checklist/checklist.entity.js");
+const schedule_entity_js_1 = require("../planner/schedule.entity.js");
 let UserService = class UserService {
     repo;
-    constructor(repo) {
+    lessonRepo;
+    checklistRepo;
+    scheduleRepo;
+    constructor(repo, lessonRepo, checklistRepo, scheduleRepo) {
         this.repo = repo;
+        this.lessonRepo = lessonRepo;
+        this.checklistRepo = checklistRepo;
+        this.scheduleRepo = scheduleRepo;
     }
     async create(data) {
         const user = this.repo.create(data);
@@ -39,11 +48,26 @@ let UserService = class UserService {
         Object.assign(user, dto);
         return this.repo.save(user);
     }
+    async delete(id) {
+        const user = await this.findById(id);
+        if (!user)
+            throw new common_1.NotFoundException('User not found');
+        await this.lessonRepo.delete({ userId: id });
+        await this.checklistRepo.delete({ userId: id });
+        await this.scheduleRepo.delete({ userId: id });
+        await this.repo.remove(user);
+    }
 };
 exports.UserService = UserService;
 exports.UserService = UserService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_js_1.UserEntity)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __param(1, (0, typeorm_1.InjectRepository)(lesson_entity_js_1.LessonEntity)),
+    __param(2, (0, typeorm_1.InjectRepository)(checklist_entity_js_1.ChecklistEntity)),
+    __param(3, (0, typeorm_1.InjectRepository)(schedule_entity_js_1.ScheduleEntity)),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository])
 ], UserService);
 //# sourceMappingURL=user.service.js.map

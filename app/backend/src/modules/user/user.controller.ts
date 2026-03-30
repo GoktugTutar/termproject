@@ -1,4 +1,4 @@
-import { Controller, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Put, Delete, Body, UseGuards, HttpCode } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { UserService } from './user.service.js';
@@ -16,5 +16,11 @@ export class UserController {
     @Body() dto: UpdateUserProfileDto,
   ) {
     return this.userService.updateProfile(user.id, dto);
+  }
+
+  @Delete('delete')
+  @HttpCode(204)
+  delete(@CurrentUser() user: UserEntity) {
+    return this.userService.delete(user.id);
   }
 }

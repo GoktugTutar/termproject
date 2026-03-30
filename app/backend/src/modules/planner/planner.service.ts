@@ -53,7 +53,8 @@ export class PlannerService {
     }
 
     // ── Pzt–Cmt: bugünün checklistini doldurmadan program güncellenemesin ─────
-    if (dayName !== 'sunday') {
+    // (sadece güncelleme senaryosunda — ilk oluşturmada checklist henüz yok)
+    if (existing && dayName !== 'sunday') {
       const submitted = await this.checklistService.isTodaySubmitted(userId);
       if (!submitted) {
         throw new BadRequestException(

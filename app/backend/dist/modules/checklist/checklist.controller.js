@@ -50,6 +50,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], ChecklistController.prototype, "get", null);
 __decorate([
+    (0, common_1.HttpCode)(200),
     (0, common_1.Post)('submit'),
     __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
     __param(1, (0, common_1.Body)()),

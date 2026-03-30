@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, HttpCode } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { ChecklistService } from './checklist.service.js';
@@ -23,6 +23,7 @@ export class ChecklistController {
   }
 
   // POST /checklist/submit
+  @HttpCode(200)
   @Post('submit')
   submit(@CurrentUser() user: UserEntity, @Body() dto: SubmitChecklistDto) {
     return this.checklistService.submit(user.id, dto);

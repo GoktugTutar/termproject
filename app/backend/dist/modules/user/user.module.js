@@ -12,12 +12,15 @@ const typeorm_1 = require("@nestjs/typeorm");
 const user_entity_js_1 = require("./user.entity.js");
 const user_service_js_1 = require("./user.service.js");
 const user_controller_js_1 = require("./user.controller.js");
+const lesson_entity_js_1 = require("../lesson/lesson.entity.js");
+const checklist_entity_js_1 = require("../checklist/checklist.entity.js");
+const schedule_entity_js_1 = require("../planner/schedule.entity.js");
 let UserModule = class UserModule {
 };
 exports.UserModule = UserModule;
 exports.UserModule = UserModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([user_entity_js_1.UserEntity])],
+        imports: [typeorm_1.TypeOrmModule.forFeature([user_entity_js_1.UserEntity, lesson_entity_js_1.LessonEntity, checklist_entity_js_1.ChecklistEntity, schedule_entity_js_1.ScheduleEntity])],
         providers: [user_service_js_1.UserService],
         controllers: [user_controller_js_1.UserController],
         exports: [user_service_js_1.UserService],

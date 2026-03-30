@@ -47,7 +47,7 @@ let PlannerService = class PlannerService {
         if (existing?.lastUpdatedDate === today) {
             return existing;
         }
-        if (dayName !== 'sunday') {
+        if (existing && dayName !== 'sunday') {
             const submitted = await this.checklistService.isTodaySubmitted(userId);
             if (!submitted) {
                 throw new common_1.BadRequestException('Programı güncellemek için önce bugünün checklistini doldurmanız gerekiyor.');

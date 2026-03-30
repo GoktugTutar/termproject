@@ -5,4 +5,5 @@ export declare class UserController {
     private readonly userService;
     constructor(userService: UserService);
     updateProfile(user: UserEntity, dto: UpdateUserProfileDto): Promise<UserEntity>;
+    delete(user: UserEntity): Promise<void>;
 }
