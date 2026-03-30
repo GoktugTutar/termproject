@@ -1,21 +1,20 @@
-import { ChecklistService } from './checklist.service';
-import { SubmitChecklistDto } from './dto/submit-checklist.dto';
-declare class SlotDto {
-    lessonId: string;
-    lessonName: string;
-    hours: number;
-}
-declare class CreateChecklistDto {
-    slots: SlotDto[];
-}
+import { ChecklistService } from './checklist.service.js';
+import { SubmitChecklistDto } from './dto/submit-checklist.dto.js';
+import { UserEntity } from '../user/user.entity.js';
 export declare class ChecklistController {
     private readonly checklistService;
     constructor(checklistService: ChecklistService);
-    getAll(req: any): Promise<import("./checklist.model").ChecklistItem[]>;
-    getToday(req: any): Promise<import("./checklist.model").ChecklistItem[]>;
-    create(req: any, dto: CreateChecklistDto): Promise<import("./checklist.model").ChecklistItem[]>;
-    submit(req: any, dto: SubmitChecklistDto): Promise<import("./checklist.model").ChecklistItem & {
-        remainingDisplay: string;
+    create(user: UserEntity): Promise<import("./checklist.entity.js").ChecklistEntity>;
+    get(user: UserEntity): Promise<{
+        id: string;
+        date: string;
+        submitted: boolean;
+        lessons: {
+            lessonId: string;
+            allocatedHours: number;
+            remainingHours: number;
+            hoursCompleted: number | null;
+        }[];
     }>;
+    submit(user: UserEntity, dto: SubmitChecklistDto): Promise<import("./checklist.entity.js").ChecklistEntity>;
 }
-export {};

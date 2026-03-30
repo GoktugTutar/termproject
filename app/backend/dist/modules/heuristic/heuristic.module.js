@@ -8,14 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HeuristicModule = void 0;
 const common_1 = require("@nestjs/common");
-const heuristic_service_1 = require("./heuristic.service");
+const heuristic_service_js_1 = require("./heuristic.service.js");
 let HeuristicModule = class HeuristicModule {
 };
 exports.HeuristicModule = HeuristicModule;
 exports.HeuristicModule = HeuristicModule = __decorate([
     (0, common_1.Module)({
-        providers: [heuristic_service_1.HeuristicService],
-        exports: [heuristic_service_1.HeuristicService],
+        providers: [heuristic_service_js_1.HeuristicService],
+        exports: [heuristic_service_js_1.HeuristicService],
     })
 ], HeuristicModule);
 //# sourceMappingURL=heuristic.module.js.map

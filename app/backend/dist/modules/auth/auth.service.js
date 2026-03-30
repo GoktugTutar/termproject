@@ -46,7 +46,7 @@ exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const bcrypt = __importStar(require("bcryptjs"));
-const user_service_1 = require("../user/user.service");
+const user_service_js_1 = require("../user/user.service.js");
 let AuthService = class AuthService {
     userService;
     jwtService;
@@ -57,39 +57,28 @@ let AuthService = class AuthService {
     async register(dto) {
         const existing = await this.userService.findByEmail(dto.email);
         if (existing)
-            throw new common_1.ConflictException('Bu email zaten kayıtlı');
-        const hashedPassword = await bcrypt.hash(dto.password, 10);
-        const user = await this.userService.create({
-            email: dto.email,
-            password: hashedPassword,
-        });
-        return this.signToken(user);
+            throw new common_1.ConflictException('Email already registered');
+        const hashed = await bcrypt.hash(dto.password, 10);
+        const user = await this.userService.create({ email: dto.email, password: hashed });
+        return this.sign(user.id, user.email);
     }
     async login(dto) {
         const user = await this.userService.findByEmail(dto.email);
         if (!user)
-            throw new common_1.UnauthorizedException('Email veya şifre hatalı');
-        const passwordMatch = await bcrypt.compare(dto.password, user.password);
-        if (!passwordMatch)
-            throw new common_1.UnauthorizedException('Email veya şifre hatalı');
-        return this.signToken(user);
+            throw new common_1.UnauthorizedException('Invalid credentials');
+        const valid = await bcrypt.compare(dto.password, user.password);
+        if (!valid)
+            throw new common_1.UnauthorizedException('Invalid credentials');
+        return this.sign(user.id, user.email);
     }
-    async getMe(userId) {
-        const user = await this.userService.findById(userId);
-        if (!user)
-            throw new common_1.UnauthorizedException('Kullanıcı bulunamadı');
-        const { password: _pw, ...rest } = user;
-        return rest;
-    }
-    signToken(user) {
-        const payload = { sub: user.id, email: user.email };
-        return { access_token: this.jwtService.sign(payload) };
+    sign(sub, email) {
+        return { access_token: this.jwtService.sign({ sub, email }) };
     }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [user_service_1.UserService,
+    __metadata("design:paramtypes", [user_service_js_1.UserService,
         jwt_1.JwtService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

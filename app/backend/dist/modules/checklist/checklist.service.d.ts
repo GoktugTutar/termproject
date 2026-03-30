@@ -1,21 +1,26 @@
 import { Repository } from 'typeorm';
-import { ChecklistEntity } from './checklist.entity';
-import { ChecklistItem } from './checklist.model';
-import { SubmitChecklistDto } from './dto/submit-checklist.dto';
-import { LessonService } from '../lesson/lesson.service';
+import { ChecklistEntity } from './checklist.entity.js';
+import { SubmitChecklistDto } from './dto/submit-checklist.dto.js';
+import { LessonService } from '../lesson/lesson.service.js';
+import { ScheduleEntity } from '../planner/schedule.entity.js';
 export declare class ChecklistService {
-    private readonly checklistRepo;
+    private readonly repo;
+    private readonly scheduleRepo;
     private readonly lessonService;
-    constructor(checklistRepo: Repository<ChecklistEntity>, lessonService: LessonService);
-    getAll(userId: string): Promise<ChecklistItem[]>;
-    getToday(userId: string): Promise<ChecklistItem[]>;
-    createFromSlots(userId: string, slots: {
-        lessonId: string;
-        lessonName: string;
-        hours: number;
-    }[]): Promise<ChecklistItem[]>;
-    submit(userId: string, dto: SubmitChecklistDto): Promise<ChecklistItem & {
-        remainingDisplay: string;
+    constructor(repo: Repository<ChecklistEntity>, scheduleRepo: Repository<ScheduleEntity>, lessonService: LessonService);
+    createForToday(userId: string): Promise<ChecklistEntity>;
+    getTodayChecklist(userId: string): Promise<{
+        id: string;
+        date: string;
+        submitted: boolean;
+        lessons: {
+            lessonId: string;
+            allocatedHours: number;
+            remainingHours: number;
+            hoursCompleted: number | null;
+        }[];
     }>;
-    private formatRemaining;
+    submit(userId: string, dto: SubmitChecklistDto): Promise<ChecklistEntity>;
+    getWeekChecklists(userId: string): Promise<ChecklistEntity[]>;
+    getEarlyCompletedIds(userId: string): Promise<string[]>;
 }

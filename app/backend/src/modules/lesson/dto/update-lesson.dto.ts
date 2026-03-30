@@ -1,36 +1,44 @@
 import {
-  IsArray,
-  IsInt,
-  IsOptional,
   IsString,
-  Max,
+  IsNumber,
+  IsOptional,
+  IsDateString,
+  IsArray,
   Min,
-  ValidateNested,
+  Max,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-import { DeadlineDto } from './create-lesson.dto';
 
 export class UpdateLessonDto {
-  @IsString()
-  lessonName: string; // Hangi dersin güncelleneceğini belirtir (isimle arama)
-
   @IsOptional()
   @IsString()
-  newLessonName?: string;
+  name?: string;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
+  @Min(0)
+  credit?: number;
+
+  @IsOptional()
+  @IsNumber()
   @Min(1)
   @Max(5)
   difficulty?: number;
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => DeadlineDto)
-  deadlines?: DeadlineDto[];
+  @IsDateString()
+  vizeDate?: string;
 
   @IsOptional()
-  @IsString()
-  semester?: string;
+  @IsDateString()
+  finalDate?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsDateString({}, { each: true })
+  homeworkDeadlines?: string[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  semester?: number;
 }

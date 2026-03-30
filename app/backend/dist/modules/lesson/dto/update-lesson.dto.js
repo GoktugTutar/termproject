@@ -11,42 +11,54 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateLessonDto = void 0;
 const class_validator_1 = require("class-validator");
-const class_transformer_1 = require("class-transformer");
-const create_lesson_dto_1 = require("./create-lesson.dto");
 class UpdateLessonDto {
-    lessonName;
-    newLessonName;
+    name;
+    credit;
     difficulty;
-    deadlines;
+    vizeDate;
+    finalDate;
+    homeworkDeadlines;
     semester;
 }
 exports.UpdateLessonDto = UpdateLessonDto;
 __decorate([
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], UpdateLessonDto.prototype, "lessonName", void 0);
-__decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], UpdateLessonDto.prototype, "newLessonName", void 0);
+], UpdateLessonDto.prototype, "name", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], UpdateLessonDto.prototype, "credit", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(1),
     (0, class_validator_1.Max)(5),
     __metadata("design:type", Number)
 ], UpdateLessonDto.prototype, "difficulty", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)(),
-    (0, class_validator_1.ValidateNested)({ each: true }),
-    (0, class_transformer_1.Type)(() => create_lesson_dto_1.DeadlineDto),
-    __metadata("design:type", Array)
-], UpdateLessonDto.prototype, "deadlines", void 0);
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], UpdateLessonDto.prototype, "vizeDate", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
+], UpdateLessonDto.prototype, "finalDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsDateString)({}, { each: true }),
+    __metadata("design:type", Array)
+], UpdateLessonDto.prototype, "homeworkDeadlines", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
 ], UpdateLessonDto.prototype, "semester", void 0);
 //# sourceMappingURL=update-lesson.dto.js.map

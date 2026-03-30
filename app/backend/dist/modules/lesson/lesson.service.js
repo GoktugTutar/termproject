@@ -16,73 +16,54 @@ exports.LessonService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
-const lesson_entity_1 = require("./lesson.entity");
+const lesson_entity_js_1 = require("./lesson.entity.js");
 let LessonService = class LessonService {
-    lessonRepo;
-    constructor(lessonRepo) {
-        this.lessonRepo = lessonRepo;
+    repo;
+    constructor(repo) {
+        this.repo = repo;
     }
-    async findAllByUser(userId) {
-        return this.lessonRepo.find({ where: { userId } });
+    async registerMany(userId, dtos) {
+        const entities = dtos.map((dto) => {
+            const entity = this.repo.create();
+            entity.userId = userId;
+            entity.name = dto.name;
+            entity.credit = dto.credit;
+            entity.difficulty = dto.difficulty;
+            entity.vizeDate = dto.vizeDate ? new Date(dto.vizeDate) : null;
+            entity.finalDate = dto.finalDate ? new Date(dto.finalDate) : null;
+            entity.homeworkDeadlines = dto.homeworkDeadlines ?? [];
+            entity.semester = dto.semester;
+            entity.delayCount = 0;
+            return entity;
+        });
+        return this.repo.save(entities);
+    }
+    async update(userId, lessonName, dto) {
+        const lesson = await this.repo.findOne({ where: { userId, name: lessonName } });
+        if (!lesson)
+            throw new common_1.NotFoundException(`Lesson "${lessonName}" not found`);
+        if (dto.vizeDate)
+            lesson.vizeDate = new Date(dto.vizeDate);
+        if (dto.finalDate)
+            lesson.finalDate = new Date(dto.finalDate);
+        const { vizeDate, finalDate, ...rest } = dto;
+        Object.assign(lesson, rest);
+        return this.repo.save(lesson);
+    }
+    async findByUserId(userId) {
+        return this.repo.find({ where: { userId } });
     }
     async findById(id) {
-        return this.lessonRepo.findOne({ where: { id } });
+        return this.repo.findOne({ where: { id } });
     }
-    async findByName(userId, lessonName) {
-        return this.lessonRepo.findOne({ where: { userId, lessonName } });
-    }
-    async bulkCreate(userId, dtos) {
-        const entities = dtos.map((dto) => this.lessonRepo.create({
-            userId,
-            lessonName: dto.lessonName,
-            difficulty: dto.difficulty,
-            deadlines: dto.deadlines,
-            semester: dto.semester,
-            delay: 0,
-        }));
-        return this.lessonRepo.save(entities);
-    }
-    async update(userId, dto) {
-        const lesson = await this.lessonRepo.findOne({
-            where: { userId, lessonName: dto.lessonName },
-        });
-        if (!lesson)
-            throw new common_1.NotFoundException('Ders bulunamadı');
-        if (dto.newLessonName)
-            lesson.lessonName = dto.newLessonName;
-        if (dto.difficulty !== undefined)
-            lesson.difficulty = dto.difficulty;
-        if (dto.deadlines !== undefined)
-            lesson.deadlines = dto.deadlines;
-        if (dto.semester !== undefined)
-            lesson.semester = dto.semester;
-        return this.lessonRepo.save(lesson);
-    }
-    async applyChecklistResult(id, userId, plannedHours, actualHours) {
-        const lesson = await this.lessonRepo.findOne({ where: { id, userId } });
-        if (!lesson)
-            throw new common_1.NotFoundException('Ders bulunamadı');
-        if (actualHours !== null) {
-            const R = plannedHours - actualHours;
-            if (R !== 0)
-                lesson.delay += 1;
-        }
-        else {
-            lesson.delay += 1;
-        }
-        await this.lessonRepo.save(lesson);
-    }
-    async remove(id, userId) {
-        const lesson = await this.lessonRepo.findOne({ where: { id, userId } });
-        if (!lesson)
-            throw new common_1.NotFoundException('Ders bulunamadı');
-        await this.lessonRepo.remove(lesson);
+    async incrementDelay(lessonId) {
+        await this.repo.increment({ id: lessonId }, 'delayCount', 1);
     }
 };
 exports.LessonService = LessonService;
 exports.LessonService = LessonService = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, typeorm_1.InjectRepository)(lesson_entity_1.LessonEntity)),
+    __param(0, (0, typeorm_1.InjectRepository)(lesson_entity_js_1.LessonEntity)),
     __metadata("design:paramtypes", [typeorm_2.Repository])
 ], LessonService);
 //# sourceMappingURL=lesson.service.js.map

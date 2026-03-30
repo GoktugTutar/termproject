@@ -1,10 +1,4 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-} from 'typeorm';
-import { Deadline } from './lesson.model';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity('lessons')
 export class LessonEntity {
@@ -15,20 +9,26 @@ export class LessonEntity {
   userId: string;
 
   @Column()
-  lessonName: string;
+  name: string;
+
+  @Column({ type: 'float' })
+  credit: number;
+
+  @Column({ type: 'float' })
+  difficulty: number; // D: 1–5
+
+  @Column({ type: 'timestamptz', nullable: true })
+  vizeDate: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  finalDate: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  homeworkDeadlines: string[]; // ISO date strings
 
   @Column()
-  difficulty: number;
-
-  @Column({ type: 'jsonb', default: '[]' })
-  deadlines: Deadline[];
-
-  @Column()
-  semester: string;
+  semester: number;
 
   @Column({ default: 0 })
-  delay: number;
-
-  @CreateDateColumn()
-  createdAt: Date;
+  delayCount: number; // B
 }

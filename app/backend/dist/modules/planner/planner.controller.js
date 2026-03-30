@@ -14,48 +14,40 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PlannerController = void 0;
 const common_1 = require("@nestjs/common");
-const planner_service_1 = require("./planner.service");
-const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
-const class_validator_1 = require("class-validator");
-class DailyUpdateDto {
-    freeHours;
-}
-__decorate([
-    (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
-    __metadata("design:type", Number)
-], DailyUpdateDto.prototype, "freeHours", void 0);
+const jwt_auth_guard_js_1 = require("../auth/guards/jwt-auth.guard.js");
+const current_user_decorator_js_1 = require("../../common/decorators/current-user.decorator.js");
+const planner_service_js_1 = require("./planner.service.js");
+const user_entity_js_1 = require("../user/user.entity.js");
 let PlannerController = class PlannerController {
     plannerService;
     constructor(plannerService) {
         this.plannerService = plannerService;
     }
-    createWeeklyPlan(req) {
-        return this.plannerService.createWeeklyPlan(req.user.sub);
+    create(user) {
+        return this.plannerService.create(user.id);
     }
-    dailyUpdate(req, dto) {
-        return this.plannerService.createDailyPlan(req.user.sub, dto.freeHours);
+    getSchedule(user) {
+        return this.plannerService.getSchedule(user.id);
     }
 };
 exports.PlannerController = PlannerController;
 __decorate([
     (0, common_1.Post)('create'),
-    __param(0, (0, common_1.Req)()),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity]),
     __metadata("design:returntype", void 0)
-], PlannerController.prototype, "createWeeklyPlan", null);
+], PlannerController.prototype, "create", null);
 __decorate([
-    (0, common_1.Post)('dailyupdate'),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Body)()),
+    (0, common_1.Get)('schedule'),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, DailyUpdateDto]),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity]),
     __metadata("design:returntype", void 0)
-], PlannerController.prototype, "dailyUpdate", null);
+], PlannerController.prototype, "getSchedule", null);
 exports.PlannerController = PlannerController = __decorate([
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard),
     (0, common_1.Controller)('planner'),
-    __metadata("design:paramtypes", [planner_service_1.PlannerService])
+    __metadata("design:paramtypes", [planner_service_js_1.PlannerService])
 ], PlannerController);
 //# sourceMappingURL=planner.controller.js.map

@@ -1,25 +1,24 @@
-import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsNumber, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class SubmitChecklistDto {
+export class LessonSubmissionDto {
   @IsString()
   lessonId: string;
 
   /**
-   * Kullanıcının gerçekten harcadığı saat.
-   * null göndermek "tamamlanmadı" (not_done) anlamına gelir.
+   * hoursCompleted encoding:
+   *   9999  → erken bitti (inf)
+   *  -9999  → hiç yapılmadı (-inf)
+   *   > 0   → tamamlandı (#)
+   *   < 0   → eksik (-#, value = -(hours done))
    */
-  @IsOptional()
   @IsNumber()
-  @Min(0)
-  actualHours?: number;
+  hoursCompleted: number;
+}
 
-  /**
-   * Kullanıcı ne yaptığını belirtir:
-   * 'early'      → erken bitti
-   * 'completed'  → tamamlandı
-   * 'incomplete' → eksik
-   * 'not_done'   → tamamlanmadı
-   */
-  @IsIn(['early', 'completed', 'incomplete', 'not_done'])
-  status: 'early' | 'completed' | 'incomplete' | 'not_done';
+export class SubmitChecklistDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LessonSubmissionDto)
+  lessons: LessonSubmissionDto[];
 }

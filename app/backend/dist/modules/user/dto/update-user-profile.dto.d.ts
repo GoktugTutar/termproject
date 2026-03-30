@@ -1,7 +1,8 @@
+import type { BusyTimeMap } from '../user.model.js';
 export declare class UpdateUserProfileDto {
     name?: string;
     gpa?: number;
-    semester?: string;
-    stress?: number;
-    busyTimes?: string[];
+    semester?: number;
+    stressLevel?: number;
+    busyTimes?: BusyTimeMap;
 }

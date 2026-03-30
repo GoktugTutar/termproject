@@ -14,63 +14,44 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LessonController = void 0;
 const common_1 = require("@nestjs/common");
-const lesson_service_1 = require("./lesson.service");
-const update_lesson_dto_1 = require("./dto/update-lesson.dto");
-const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const jwt_auth_guard_js_1 = require("../auth/guards/jwt-auth.guard.js");
+const current_user_decorator_js_1 = require("../../common/decorators/current-user.decorator.js");
+const lesson_service_js_1 = require("./lesson.service.js");
+const update_lesson_dto_js_1 = require("./dto/update-lesson.dto.js");
+const user_entity_js_1 = require("../user/user.entity.js");
 let LessonController = class LessonController {
     lessonService;
     constructor(lessonService) {
         this.lessonService = lessonService;
     }
-    register(req, dtos) {
-        return this.lessonService.bulkCreate(req.user.sub, dtos);
+    register(user, dtos) {
+        return this.lessonService.registerMany(user.id, dtos);
     }
-    findAll(req) {
-        return this.lessonService.findAllByUser(req.user.sub);
-    }
-    update(req, dto) {
-        return this.lessonService.update(req.user.sub, dto);
-    }
-    remove(req, id) {
-        this.lessonService.remove(id, req.user.sub);
-        return { message: 'Ders silindi' };
+    update(user, name, dto) {
+        return this.lessonService.update(user.id, name, dto);
     }
 };
 exports.LessonController = LessonController;
 __decorate([
     (0, common_1.Post)('register'),
-    __param(0, (0, common_1.Req)()),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Array]),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity, Array]),
     __metadata("design:returntype", void 0)
 ], LessonController.prototype, "register", null);
 __decorate([
-    (0, common_1.Get)(),
-    __param(0, (0, common_1.Req)()),
+    (0, common_1.Put)('update/:name'),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('name')),
+    __param(2, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
-], LessonController.prototype, "findAll", null);
-__decorate([
-    (0, common_1.Patch)('update'),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, update_lesson_dto_1.UpdateLessonDto]),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity, String, update_lesson_dto_js_1.UpdateLessonDto]),
     __metadata("design:returntype", void 0)
 ], LessonController.prototype, "update", null);
-__decorate([
-    (0, common_1.Delete)(':id'),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.Param)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String]),
-    __metadata("design:returntype", void 0)
-], LessonController.prototype, "remove", null);
 exports.LessonController = LessonController = __decorate([
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard),
     (0, common_1.Controller)('lesson'),
-    __metadata("design:paramtypes", [lesson_service_1.LessonService])
+    __metadata("design:paramtypes", [lesson_service_js_1.LessonService])
 ], LessonController);
 //# sourceMappingURL=lesson.controller.js.map

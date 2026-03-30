@@ -1,12 +1,14 @@
 import { Repository } from 'typeorm';
-import { UserEntity } from './user.entity';
-import { User } from './user.model';
-import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { UserEntity } from './user.entity.js';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto.js';
 export declare class UserService {
-    private readonly userRepo;
-    constructor(userRepo: Repository<UserEntity>);
-    findById(id: string): Promise<User | null>;
-    findByEmail(email: string): Promise<User | null>;
-    create(data: Pick<User, 'email' | 'password'>): Promise<User>;
-    updateProfile(id: string, dto: UpdateUserProfileDto): Promise<Omit<User, 'password'>>;
+    private readonly repo;
+    constructor(repo: Repository<UserEntity>);
+    create(data: {
+        email: string;
+        password: string;
+    }): Promise<UserEntity>;
+    findById(id: string): Promise<UserEntity | null>;
+    findByEmail(email: string): Promise<UserEntity | null>;
+    updateProfile(id: string, dto: UpdateUserProfileDto): Promise<UserEntity>;
 }

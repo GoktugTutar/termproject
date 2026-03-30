@@ -1,5 +1,7 @@
-export declare class SubmitChecklistDto {
+export declare class LessonSubmissionDto {
     lessonId: string;
-    actualHours?: number;
-    status: 'early' | 'completed' | 'incomplete' | 'not_done';
+    hoursCompleted: number;
+}
+export declare class SubmitChecklistDto {
+    lessons: LessonSubmissionDto[];
 }

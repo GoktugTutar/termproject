@@ -15,7 +15,7 @@ class UpdateUserProfileDto {
     name;
     gpa;
     semester;
-    stress;
+    stressLevel;
     busyTimes;
 }
 exports.UpdateUserProfileDto = UpdateUserProfileDto;
@@ -33,20 +33,20 @@ __decorate([
 ], UpdateUserProfileDto.prototype, "gpa", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
 ], UpdateUserProfileDto.prototype, "semester", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsInt)(),
-    (0, class_validator_1.Min)(0),
-    (0, class_validator_1.Max)(10),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    (0, class_validator_1.Max)(5),
     __metadata("design:type", Number)
-], UpdateUserProfileDto.prototype, "stress", void 0);
+], UpdateUserProfileDto.prototype, "stressLevel", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)(),
-    (0, class_validator_1.IsString)({ each: true }),
-    __metadata("design:type", Array)
+    (0, class_validator_1.IsObject)(),
+    __metadata("design:type", Object)
 ], UpdateUserProfileDto.prototype, "busyTimes", void 0);
 //# sourceMappingURL=update-user-profile.dto.js.map

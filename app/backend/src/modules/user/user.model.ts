@@ -1,11 +1,13 @@
-export interface User {
+// BusyTime format: { "monday": { "9-12": "iş", "14-16": "spor" }, ... }
+export type BusyTimeMap = Record<string, Record<string, string>>;
+
+export interface IUser {
   id: string;
   email: string;
   password: string;
-  name?: string;
-  gpa?: number;          // GPA (0.0 - 4.0)
-  semester?: string;     // Hangi dönem (örn. "2024-2025 Bahar")
-  stress: number;        // S = stres seviyesi (0-10)
-  busyTimes: string[];   // Dolu olduğu zamanlar (örn. ["Pazartesi 09:00-11:00"])
-  createdAt: Date | string;
+  name: string | null;
+  gpa: number | null;
+  semester: number | null;
+  stressLevel: number; // S: 1–5
+  busyTimes: BusyTimeMap | null;
 }

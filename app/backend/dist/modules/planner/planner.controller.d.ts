@@ -1,11 +1,8 @@
-import { PlannerService } from './planner.service';
-declare class DailyUpdateDto {
-    freeHours: number;
-}
+import { PlannerService } from './planner.service.js';
+import { UserEntity } from '../user/user.entity.js';
 export declare class PlannerController {
     private readonly plannerService;
     constructor(plannerService: PlannerService);
-    createWeeklyPlan(req: any): Promise<import("./planner.service").WeeklySchedule>;
-    dailyUpdate(req: any, dto: DailyUpdateDto): Promise<import("./planner.service").DailyPlan>;
+    create(user: UserEntity): Promise<import("./schedule.entity.js").ScheduleEntity | null>;
+    getSchedule(user: UserEntity): Promise<import("./schedule.entity.js").ScheduleEntity | null>;
 }
-export {};

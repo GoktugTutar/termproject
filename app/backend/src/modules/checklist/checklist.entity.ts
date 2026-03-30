@@ -1,9 +1,5 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { ChecklistLesson } from './checklist.model.js';
 
 @Entity('checklists')
 export class ChecklistEntity {
@@ -13,27 +9,12 @@ export class ChecklistEntity {
   @Column()
   userId: string;
 
-  @Column()
-  lessonId: string;
+  @Column({ type: 'date' })
+  date: string; // YYYY-MM-DD
 
-  @Column()
-  lessonName: string;
+  @Column({ type: 'jsonb' })
+  lessons: ChecklistLesson[];
 
-  @Column()
-  date: string;
-
-  @Column({ type: 'float' })
-  plannedHours: number;
-
-  @Column({ type: 'float', nullable: true, default: null })
-  actualHours: number | null;
-
-  @Column({ default: 'pending' })
-  status: string;
-
-  @Column({ type: 'float', nullable: true, default: null })
-  remaining: number | null;
-
-  @CreateDateColumn()
-  createdAt: Date;
+  @Column({ default: false })
+  submitted: boolean;
 }

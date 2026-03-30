@@ -1,12 +1,5 @@
-import {
-  IsArray,
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max, IsObject } from 'class-validator';
+import type { BusyTimeMap } from '../user.model.js';
 
 export class UpdateUserProfileDto {
   @IsOptional()
@@ -20,17 +13,17 @@ export class UpdateUserProfileDto {
   gpa?: number;
 
   @IsOptional()
-  @IsString()
-  semester?: string;
+  @IsNumber()
+  @Min(1)
+  semester?: number;
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(10)
-  stress?: number;
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  stressLevel?: number;
 
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  busyTimes?: string[];
+  @IsObject()
+  busyTimes?: BusyTimeMap;
 }

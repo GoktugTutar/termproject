@@ -1,159 +1,153 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { UserService } from '../user/user.service';
-import { LessonService } from '../lesson/lesson.service';
-import { HeuristicService, HeuristicResult } from '../heuristic/heuristic.service';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ScheduleEntity } from './schedule.entity.js';
+import { HeuristicService, HeuristicResult } from '../heuristic/heuristic.service.js';
+import { LessonService } from '../lesson/lesson.service.js';
+import { UserService } from '../user/user.service.js';
+import { ChecklistService } from '../checklist/checklist.service.js';
+import { BusyTimeMap } from '../user/user.model.js';
+import { isMonday, formatTimeRange } from '../../common/utils/date.utils.js';
 
-export interface DailySlot {
-  day: string;       // YYYY-MM-DD
-  dayLabel: string;  // Ör: "Pazartesi"
-  lessonId: string;
-  lessonName: string;
-  hours: number;
-  score: number;
-}
-
-export interface DailyPlan {
-  date: string;
-  freeHours: number;
-  slots: DailySlot[];
-}
-
-export interface WeeklySchedule {
-  generatedAt: string;
-  weekStart: string;
-  slots: DailySlot[];
-  ranked: HeuristicResult[];
-}
-
-const DAY_LABELS = [
-  'Pazar',
-  'Pazartesi',
-  'Salı',
-  'Çarşamba',
-  'Perşembe',
-  'Cuma',
-  'Cumartesi',
-];
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const WORK_START = 8;
+const WORK_END = 22; // 14 available hours per day
+const MAX_HOURS_PER_LESSON_PER_DAY = 3;
 
 @Injectable()
 export class PlannerService {
   constructor(
-    private readonly userService: UserService,
-    private readonly lessonService: LessonService,
+    @InjectRepository(ScheduleEntity)
+    private readonly scheduleRepo: Repository<ScheduleEntity>,
     private readonly heuristicService: HeuristicService,
+    private readonly lessonService: LessonService,
+    private readonly userService: UserService,
+    private readonly checklistService: ChecklistService,
   ) {}
 
-  async createWeeklyPlan(userId: string): Promise<WeeklySchedule> {
-    const user = await this.userService.findById(userId);
-    if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
+  /**
+   * POST /planner/create
+   * Called at end of day. Recalculates the weekly schedule:
+   *  1. Ranks lessons by H score.
+   *  2. Distributes X hours per lesson across the week respecting busy times.
+   *  3. Removes future slots for lessons finished early.
+   */
+  async create(userId: string): Promise<ScheduleEntity | null> {
+    const [user, lessons, weekChecklists, earlyIds] = await Promise.all([
+      this.userService.findById(userId),
+      this.lessonService.findByUserId(userId),
+      this.checklistService.getWeekChecklists(userId),
+      this.checklistService.getEarlyCompletedIds(userId),
+    ]);
 
-    const lessons = await this.lessonService.findAllByUser(userId);
-    if (lessons.length === 0) {
-      return {
-        generatedAt: new Date().toISOString(),
-        weekStart: this.todayStr(),
-        slots: [],
-        ranked: [],
-      };
+    if (!user) return null;
+
+    const firstDay = isMonday();
+    const ranked = this.heuristicService.rankLessons(lessons, user, weekChecklists, firstDay);
+
+    // Only schedule lessons not yet fully completed early
+    const activeLessons = ranked.filter((r) => !earlyIds.includes(r.lessonId));
+
+    const schedule = this.buildWeeklySchedule(activeLessons, user.busyTimes ?? {});
+
+    // Persist: upsert schedule for the current week
+    const { startDate, endDate } = this.currentWeekRange();
+    const existing = await this.scheduleRepo.findOne({ where: { userId, startDate } });
+
+    if (existing) {
+      existing.schedule = schedule;
+      existing.endDate = endDate;
+      return this.scheduleRepo.save(existing);
     }
 
-    const today = new Date();
-    const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
-    const days = this.buildWeekDays(today);
-
-    const slots: DailySlot[] = [];
-    const MAX_HOURS_PER_DAY = 6;
-    const MAX_HOURS_PER_LESSON_PER_DAY = 3;
-
-    const dayLoad: Record<string, number> = {};
-    days.forEach((d) => (dayLoad[d.date] = 0));
-
-    for (const result of ranked) {
-      let remaining = result.studyHours;
-
-      for (const day of days) {
-        if (remaining <= 0) break;
-        const available = Math.min(
-          MAX_HOURS_PER_DAY - dayLoad[day.date],
-          MAX_HOURS_PER_LESSON_PER_DAY,
-        );
-        if (available <= 0) continue;
-
-        const hoursToday = Math.min(remaining, available);
-        slots.push({
-          day: day.date,
-          dayLabel: day.label,
-          lessonId: result.lessonId,
-          lessonName: result.lessonName,
-          hours: hoursToday,
-          score: result.score,
-        });
-
-        dayLoad[day.date] += hoursToday;
-        remaining -= hoursToday;
-      }
-    }
-
-    return {
-      generatedAt: new Date().toISOString(),
-      weekStart: days[0].date,
-      slots,
-      ranked,
-    };
+    const entity = this.scheduleRepo.create({ userId, startDate, endDate, schedule });
+    return this.scheduleRepo.save(entity);
   }
 
-  async createDailyPlan(userId: string, freeHours: number): Promise<DailyPlan> {
-    const user = await this.userService.findById(userId);
-    if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
-
-    const lessons = await this.lessonService.findAllByUser(userId);
-    const today = new Date();
-    const todayStr = this.todayStr();
-    const dayLabel = DAY_LABELS[today.getDay()];
-
-    if (lessons.length === 0) {
-      return { date: todayStr, freeHours, slots: [] };
-    }
-
-    const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
-
-    const slots: DailySlot[] = [];
-    const MAX_PER_LESSON = Math.min(3, freeHours);
-    let remainingFree = freeHours;
-
-    for (const result of ranked) {
-      if (remainingFree <= 0) break;
-      const hours = Math.min(remainingFree, MAX_PER_LESSON, result.studyHours / 7);
-      const roundedHours = Math.round(hours * 10) / 10;
-      if (roundedHours <= 0) continue;
-
-      slots.push({
-        day: todayStr,
-        dayLabel,
-        lessonId: result.lessonId,
-        lessonName: result.lessonName,
-        hours: roundedHours,
-        score: result.score,
-      });
-
-      remainingFree -= roundedHours;
-    }
-
-    return { date: todayStr, freeHours, slots };
-  }
-
-  private buildWeekDays(from: Date): { date: string; label: string }[] {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(from);
-      d.setDate(from.getDate() + i);
-      return {
-        date: d.toISOString().split('T')[0],
-        label: DAY_LABELS[d.getDay()],
-      };
+  /**
+   * GET /planner/schedule
+   * Returns the most recent schedule for the user.
+   */
+  async getSchedule(userId: string): Promise<ScheduleEntity | null> {
+    return this.scheduleRepo.findOne({
+      where: { userId },
+      order: { startDate: 'DESC' },
     });
   }
 
-  private todayStr(): string {
-    return new Date().toISOString().split('T')[0];
+  // ---------------------------------------------------------------------------
+
+  private buildWeeklySchedule(
+    ranked: HeuristicResult[],
+    busyTimes: BusyTimeMap,
+  ): Record<string, Record<string, string>> {
+    // remaining weekly hours per lesson
+    const remaining = new Map(ranked.map((r) => [r.lessonId, Math.max(1, Math.ceil(r.X))]));
+
+    const schedule: Record<string, Record<string, string>> = {};
+
+    for (const day of DAYS) {
+      schedule[day] = {};
+
+      // Embed busy times in schedule
+      const busyDay = busyTimes[day] ?? {};
+      for (const [range, label] of Object.entries(busyDay)) {
+        schedule[day][range] = `busy:${label}`;
+      }
+
+      // Collect free hours (sorted)
+      const busyHours = this.expandBusyHours(busyDay);
+      const freeHours: number[] = [];
+      for (let h = WORK_START; h < WORK_END; h++) {
+        if (!busyHours.has(h)) freeHours.push(h);
+      }
+
+      let slotPtr = 0;
+
+      for (const { lessonId } of ranked) {
+        const rem = remaining.get(lessonId) ?? 0;
+        if (rem <= 0 || slotPtr >= freeHours.length) continue;
+
+        const todayHours = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY);
+        const available = freeHours.length - slotPtr;
+        const assign = Math.min(todayHours, available);
+
+        if (assign > 0) {
+          const start = freeHours[slotPtr];
+          const end = freeHours[slotPtr + assign - 1] + 1;
+          schedule[day][formatTimeRange(start, end)] = lessonId;
+          remaining.set(lessonId, rem - assign);
+          slotPtr += assign;
+        }
+      }
+    }
+
+    return schedule;
+  }
+
+  private expandBusyHours(busyDay: Record<string, string>): Set<number> {
+    const hours = new Set<number>();
+    for (const range of Object.keys(busyDay)) {
+      const [s, e] = range.split('-').map(Number);
+      for (let h = s; h < e; h++) hours.add(h);
+    }
+    return hours;
+  }
+
+  private currentWeekRange(): { startDate: string; endDate: string } {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMon = day === 0 ? -6 : 1 - day;
+
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMon);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    return {
+      startDate: monday.toISOString().split('T')[0],
+      endDate: sunday.toISOString().split('T')[0],
+    };
   }
 }

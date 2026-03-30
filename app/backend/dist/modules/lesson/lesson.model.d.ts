@@ -1,16 +1,12 @@
-export type DeadlineType = 'midterm' | 'final' | 'homework';
-export interface Deadline {
-    type: DeadlineType;
-    date: string;
-    label?: string;
-}
-export interface Lesson {
+export interface ILesson {
     id: string;
     userId: string;
-    lessonName: string;
+    name: string;
+    credit: number;
     difficulty: number;
-    deadlines: Deadline[];
-    semester: string;
-    delay: number;
-    createdAt: Date | string;
+    vizeDate: Date | null;
+    finalDate: Date | null;
+    homeworkDeadlines: string[];
+    semester: number;
+    delayCount: number;
 }

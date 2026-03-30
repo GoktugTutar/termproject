@@ -1,14 +1,9 @@
-import {
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { UserService } from '../user/user.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { User } from '../user/user.model';
+import { UserService } from '../user/user.service.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { LoginDto } from './dto/login.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -17,38 +12,26 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{ access_token: string }> {
+  async register(dto: RegisterDto) {
     const existing = await this.userService.findByEmail(dto.email);
-    if (existing) throw new ConflictException('Bu email zaten kayıtlı');
+    if (existing) throw new ConflictException('Email already registered');
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const user = await this.userService.create({
-      email: dto.email,
-      password: hashedPassword,
-    });
-
-    return this.signToken(user);
+    const hashed = await bcrypt.hash(dto.password, 10);
+    const user = await this.userService.create({ email: dto.email, password: hashed });
+    return this.sign(user.id, user.email);
   }
 
-  async login(dto: LoginDto): Promise<{ access_token: string }> {
+  async login(dto: LoginDto) {
     const user = await this.userService.findByEmail(dto.email);
-    if (!user) throw new UnauthorizedException('Email veya şifre hatalı');
+    if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    const passwordMatch = await bcrypt.compare(dto.password, user.password);
-    if (!passwordMatch) throw new UnauthorizedException('Email veya şifre hatalı');
+    const valid = await bcrypt.compare(dto.password, user.password);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
 
-    return this.signToken(user);
+    return this.sign(user.id, user.email);
   }
 
-  async getMe(userId: string): Promise<Omit<User, 'password'>> {
-    const user = await this.userService.findById(userId);
-    if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
-    const { password: _pw, ...rest } = user;
-    return rest;
-  }
-
-  private signToken(user: User): { access_token: string } {
-    const payload = { sub: user.id, email: user.email };
-    return { access_token: this.jwtService.sign(payload) };
+  private sign(sub: string, email: string) {
+    return { access_token: this.jwtService.sign({ sub, email }) };
   }
 }

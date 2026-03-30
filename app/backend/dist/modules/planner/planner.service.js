@@ -8,132 +8,131 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PlannerService = void 0;
 const common_1 = require("@nestjs/common");
-const user_service_1 = require("../user/user.service");
-const lesson_service_1 = require("../lesson/lesson.service");
-const heuristic_service_1 = require("../heuristic/heuristic.service");
-const DAY_LABELS = [
-    'Pazar',
-    'Pazartesi',
-    'Salı',
-    'Çarşamba',
-    'Perşembe',
-    'Cuma',
-    'Cumartesi',
-];
+const typeorm_1 = require("@nestjs/typeorm");
+const typeorm_2 = require("typeorm");
+const schedule_entity_js_1 = require("./schedule.entity.js");
+const heuristic_service_js_1 = require("../heuristic/heuristic.service.js");
+const lesson_service_js_1 = require("../lesson/lesson.service.js");
+const user_service_js_1 = require("../user/user.service.js");
+const checklist_service_js_1 = require("../checklist/checklist.service.js");
+const date_utils_js_1 = require("../../common/utils/date.utils.js");
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const WORK_START = 8;
+const WORK_END = 22;
+const MAX_HOURS_PER_LESSON_PER_DAY = 3;
 let PlannerService = class PlannerService {
-    userService;
-    lessonService;
+    scheduleRepo;
     heuristicService;
-    constructor(userService, lessonService, heuristicService) {
-        this.userService = userService;
-        this.lessonService = lessonService;
+    lessonService;
+    userService;
+    checklistService;
+    constructor(scheduleRepo, heuristicService, lessonService, userService, checklistService) {
+        this.scheduleRepo = scheduleRepo;
         this.heuristicService = heuristicService;
+        this.lessonService = lessonService;
+        this.userService = userService;
+        this.checklistService = checklistService;
     }
-    async createWeeklyPlan(userId) {
-        const user = await this.userService.findById(userId);
+    async create(userId) {
+        const [user, lessons, weekChecklists, earlyIds] = await Promise.all([
+            this.userService.findById(userId),
+            this.lessonService.findByUserId(userId),
+            this.checklistService.getWeekChecklists(userId),
+            this.checklistService.getEarlyCompletedIds(userId),
+        ]);
         if (!user)
-            throw new common_1.NotFoundException('Kullanıcı bulunamadı');
-        const lessons = await this.lessonService.findAllByUser(userId);
-        if (lessons.length === 0) {
-            return {
-                generatedAt: new Date().toISOString(),
-                weekStart: this.todayStr(),
-                slots: [],
-                ranked: [],
-            };
+            return null;
+        const firstDay = (0, date_utils_js_1.isMonday)();
+        const ranked = this.heuristicService.rankLessons(lessons, user, weekChecklists, firstDay);
+        const activeLessons = ranked.filter((r) => !earlyIds.includes(r.lessonId));
+        const schedule = this.buildWeeklySchedule(activeLessons, user.busyTimes ?? {});
+        const { startDate, endDate } = this.currentWeekRange();
+        const existing = await this.scheduleRepo.findOne({ where: { userId, startDate } });
+        if (existing) {
+            existing.schedule = schedule;
+            existing.endDate = endDate;
+            return this.scheduleRepo.save(existing);
         }
-        const today = new Date();
-        const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
-        const days = this.buildWeekDays(today);
-        const slots = [];
-        const MAX_HOURS_PER_DAY = 6;
-        const MAX_HOURS_PER_LESSON_PER_DAY = 3;
-        const dayLoad = {};
-        days.forEach((d) => (dayLoad[d.date] = 0));
-        for (const result of ranked) {
-            let remaining = result.studyHours;
-            for (const day of days) {
-                if (remaining <= 0)
-                    break;
-                const available = Math.min(MAX_HOURS_PER_DAY - dayLoad[day.date], MAX_HOURS_PER_LESSON_PER_DAY);
-                if (available <= 0)
-                    continue;
-                const hoursToday = Math.min(remaining, available);
-                slots.push({
-                    day: day.date,
-                    dayLabel: day.label,
-                    lessonId: result.lessonId,
-                    lessonName: result.lessonName,
-                    hours: hoursToday,
-                    score: result.score,
-                });
-                dayLoad[day.date] += hoursToday;
-                remaining -= hoursToday;
-            }
-        }
-        return {
-            generatedAt: new Date().toISOString(),
-            weekStart: days[0].date,
-            slots,
-            ranked,
-        };
+        const entity = this.scheduleRepo.create({ userId, startDate, endDate, schedule });
+        return this.scheduleRepo.save(entity);
     }
-    async createDailyPlan(userId, freeHours) {
-        const user = await this.userService.findById(userId);
-        if (!user)
-            throw new common_1.NotFoundException('Kullanıcı bulunamadı');
-        const lessons = await this.lessonService.findAllByUser(userId);
-        const today = new Date();
-        const todayStr = this.todayStr();
-        const dayLabel = DAY_LABELS[today.getDay()];
-        if (lessons.length === 0) {
-            return { date: todayStr, freeHours, slots: [] };
-        }
-        const ranked = this.heuristicService.rankLessons(lessons, user.stress, today);
-        const slots = [];
-        const MAX_PER_LESSON = Math.min(3, freeHours);
-        let remainingFree = freeHours;
-        for (const result of ranked) {
-            if (remainingFree <= 0)
-                break;
-            const hours = Math.min(remainingFree, MAX_PER_LESSON, result.studyHours / 7);
-            const roundedHours = Math.round(hours * 10) / 10;
-            if (roundedHours <= 0)
-                continue;
-            slots.push({
-                day: todayStr,
-                dayLabel,
-                lessonId: result.lessonId,
-                lessonName: result.lessonName,
-                hours: roundedHours,
-                score: result.score,
-            });
-            remainingFree -= roundedHours;
-        }
-        return { date: todayStr, freeHours, slots };
-    }
-    buildWeekDays(from) {
-        return Array.from({ length: 7 }, (_, i) => {
-            const d = new Date(from);
-            d.setDate(from.getDate() + i);
-            return {
-                date: d.toISOString().split('T')[0],
-                label: DAY_LABELS[d.getDay()],
-            };
+    async getSchedule(userId) {
+        return this.scheduleRepo.findOne({
+            where: { userId },
+            order: { startDate: 'DESC' },
         });
     }
-    todayStr() {
-        return new Date().toISOString().split('T')[0];
+    buildWeeklySchedule(ranked, busyTimes) {
+        const remaining = new Map(ranked.map((r) => [r.lessonId, Math.max(1, Math.ceil(r.X))]));
+        const schedule = {};
+        for (const day of DAYS) {
+            schedule[day] = {};
+            const busyDay = busyTimes[day] ?? {};
+            for (const [range, label] of Object.entries(busyDay)) {
+                schedule[day][range] = `busy:${label}`;
+            }
+            const busyHours = this.expandBusyHours(busyDay);
+            const freeHours = [];
+            for (let h = WORK_START; h < WORK_END; h++) {
+                if (!busyHours.has(h))
+                    freeHours.push(h);
+            }
+            let slotPtr = 0;
+            for (const { lessonId } of ranked) {
+                const rem = remaining.get(lessonId) ?? 0;
+                if (rem <= 0 || slotPtr >= freeHours.length)
+                    continue;
+                const todayHours = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY);
+                const available = freeHours.length - slotPtr;
+                const assign = Math.min(todayHours, available);
+                if (assign > 0) {
+                    const start = freeHours[slotPtr];
+                    const end = freeHours[slotPtr + assign - 1] + 1;
+                    schedule[day][(0, date_utils_js_1.formatTimeRange)(start, end)] = lessonId;
+                    remaining.set(lessonId, rem - assign);
+                    slotPtr += assign;
+                }
+            }
+        }
+        return schedule;
+    }
+    expandBusyHours(busyDay) {
+        const hours = new Set();
+        for (const range of Object.keys(busyDay)) {
+            const [s, e] = range.split('-').map(Number);
+            for (let h = s; h < e; h++)
+                hours.add(h);
+        }
+        return hours;
+    }
+    currentWeekRange() {
+        const now = new Date();
+        const day = now.getDay();
+        const diffToMon = day === 0 ? -6 : 1 - day;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + diffToMon);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        return {
+            startDate: monday.toISOString().split('T')[0],
+            endDate: sunday.toISOString().split('T')[0],
+        };
     }
 };
 exports.PlannerService = PlannerService;
 exports.PlannerService = PlannerService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [user_service_1.UserService,
-        lesson_service_1.LessonService,
-        heuristic_service_1.HeuristicService])
+    __param(0, (0, typeorm_1.InjectRepository)(schedule_entity_js_1.ScheduleEntity)),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        heuristic_service_js_1.HeuristicService,
+        lesson_service_js_1.LessonService,
+        user_service_js_1.UserService,
+        checklist_service_js_1.ChecklistService])
 ], PlannerService);
 //# sourceMappingURL=planner.service.js.map

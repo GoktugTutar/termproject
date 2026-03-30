@@ -1,20 +1,22 @@
-import { Lesson } from '../lesson/lesson.model';
-export interface HeuristicInput {
-    lesson: Lesson;
-    stress: number;
-    today: Date;
-}
+import { LessonEntity } from '../lesson/lesson.entity.js';
+import { UserEntity } from '../user/user.entity.js';
+import { ChecklistEntity } from '../checklist/checklist.entity.js';
 export interface HeuristicResult {
     lessonId: string;
     lessonName: string;
-    score: number;
-    studyHours: number;
-    urgencyDays: number;
+    H: number;
+    U: number;
+    R: number;
+    X: number;
+    D: number;
+    S: number;
+    B: number;
 }
 export declare class HeuristicService {
-    getNextExamDate(lesson: Lesson, today: Date): string | null;
-    private calcUrgency;
-    calcScore(input: HeuristicInput, allLessons: Lesson[]): number;
-    calcStudyHours(lesson: Lesson, allLessons: Lesson[]): number;
-    rankLessons(lessons: Lesson[], stress: number, today: Date): HeuristicResult[];
+    calculateX(lesson: LessonEntity, allLessons: LessonEntity[]): number;
+    calculateU(lesson: LessonEntity, now?: Date): number;
+    calculateR(lesson: LessonEntity, allLessons: LessonEntity[], weekChecklists: ChecklistEntity[], isFirstDay: boolean): number;
+    calculateH(U: number, R: number, D: number, S: number, B: number): number;
+    calculate(lesson: LessonEntity, allLessons: LessonEntity[], user: UserEntity, weekChecklists: ChecklistEntity[], isFirstDay: boolean): HeuristicResult;
+    rankLessons(lessons: LessonEntity[], user: UserEntity, weekChecklists: ChecklistEntity[], isFirstDay: boolean): HeuristicResult[];
 }

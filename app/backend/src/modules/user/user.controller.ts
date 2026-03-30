@@ -1,23 +1,20 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
-import { UserService } from './user.service';
-import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Controller, Put, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { UserService } from './user.service.js';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto.js';
+import { UserEntity } from './user.entity.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('person')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @Get('me')
-  async getMe(@Req() req: any) {
-    const user = await this.userService.findById(req.user.sub);
-    if (!user) return null;
-    const { password: _pw, ...rest } = user;
-    return rest;
-  }
-
-  @Patch('update')
-  update(@Req() req: any, @Body() dto: UpdateUserProfileDto) {
-    return this.userService.updateProfile(req.user.sub, dto);
+  @Put('update')
+  updateProfile(
+    @CurrentUser() user: UserEntity,
+    @Body() dto: UpdateUserProfileDto,
+  ) {
+    return this.userService.updateProfile(user.id, dto);
   }
 }

@@ -1,63 +1,30 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { ChecklistService } from './checklist.service';
-import { SubmitChecklistDto } from './dto/submit-checklist.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IsArray, IsNumber, IsString, Min, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
-
-class SlotDto {
-  @IsString()
-  lessonId: string;
-
-  @IsString()
-  lessonName: string;
-
-  @IsNumber()
-  @Min(0)
-  hours: number;
-}
-
-class CreateChecklistDto {
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => SlotDto)
-  slots: SlotDto[];
-}
+import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { ChecklistService } from './checklist.service.js';
+import { SubmitChecklistDto } from './dto/submit-checklist.dto.js';
+import { UserEntity } from '../user/user.entity.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('checklist')
 export class ChecklistController {
   constructor(private readonly checklistService: ChecklistService) {}
 
-  /**
-   * GET /checklist/get
-   * Kullanıcının tüm checklist öğeleri (kalan süre R ile birlikte)
-   */
-  @Get('get')
-  getAll(@Req() req: any) {
-    return this.checklistService.getAll(req.user.sub);
-  }
-
-  @Get('today')
-  getToday(@Req() req: any) {
-    return this.checklistService.getToday(req.user.sub);
-  }
-
-  /**
-   * POST /checklist/create
-   * Planner slotlarından bugünün checklist'ini oluşturur
-   */
+  // POST /checklist/create
   @Post('create')
-  create(@Req() req: any, @Body() dto: CreateChecklistDto) {
-    return this.checklistService.createFromSlots(req.user.sub, dto.slots);
+  create(@CurrentUser() user: UserEntity) {
+    return this.checklistService.createForToday(user.id);
   }
 
-  /**
-   * PATCH /checklist/submit
-   * Gün sonu checklist sonucu gönderilir
-   */
-  @Patch('submit')
-  submit(@Req() req: any, @Body() dto: SubmitChecklistDto) {
-    return this.checklistService.submit(req.user.sub, dto);
+  // GET /checklist/get
+  @Get('get')
+  get(@CurrentUser() user: UserEntity) {
+    return this.checklistService.getTodayChecklist(user.id);
+  }
+
+  // POST /checklist/submit
+  @Post('submit')
+  submit(@CurrentUser() user: UserEntity, @Body() dto: SubmitChecklistDto) {
+    return this.checklistService.submit(user.id, dto);
   }
 }

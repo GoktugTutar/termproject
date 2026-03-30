@@ -1,9 +1,5 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import type { BusyTimeMap } from './user.model.js';
 
 @Entity('users')
 export class UserEntity {
@@ -23,14 +19,11 @@ export class UserEntity {
   gpa: number;
 
   @Column({ nullable: true })
-  semester: string;
+  semester: number;
 
-  @Column({ default: 5 })
-  stress: number;
+  @Column({ type: 'float', default: 1 })
+  stressLevel: number; // S: 1–5
 
-  @Column({ type: 'jsonb', default: '[]' })
-  busyTimes: string[];
-
-  @CreateDateColumn()
-  createdAt: Date;
+  @Column({ type: 'jsonb', nullable: true })
+  busyTimes: BusyTimeMap;
 }

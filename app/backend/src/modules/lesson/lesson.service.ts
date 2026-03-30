@@ -1,80 +1,56 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { LessonEntity } from './lesson.entity';
-import { Lesson } from './lesson.model';
-import { CreateLessonDto } from './dto/create-lesson.dto';
-import { UpdateLessonDto } from './dto/update-lesson.dto';
+import { LessonEntity } from './lesson.entity.js';
+import { CreateLessonDto } from './dto/create-lesson.dto.js';
+import { UpdateLessonDto } from './dto/update-lesson.dto.js';
 
 @Injectable()
 export class LessonService {
   constructor(
     @InjectRepository(LessonEntity)
-    private readonly lessonRepo: Repository<LessonEntity>,
+    private readonly repo: Repository<LessonEntity>,
   ) {}
 
-  async findAllByUser(userId: string): Promise<Lesson[]> {
-    return this.lessonRepo.find({ where: { userId } });
-  }
-
-  async findById(id: string): Promise<Lesson | null> {
-    return this.lessonRepo.findOne({ where: { id } });
-  }
-
-  async findByName(userId: string, lessonName: string): Promise<Lesson | null> {
-    return this.lessonRepo.findOne({ where: { userId, lessonName } });
-  }
-
-  async bulkCreate(userId: string, dtos: CreateLessonDto[]): Promise<Lesson[]> {
-    const entities = dtos.map((dto) =>
-      this.lessonRepo.create({
-        userId,
-        lessonName: dto.lessonName,
-        difficulty: dto.difficulty,
-        deadlines: dto.deadlines,
-        semester: dto.semester,
-        delay: 0,
-      }),
-    );
-    return this.lessonRepo.save(entities);
-  }
-
-  async update(userId: string, dto: UpdateLessonDto): Promise<Lesson> {
-    const lesson = await this.lessonRepo.findOne({
-      where: { userId, lessonName: dto.lessonName },
+  async registerMany(userId: string, dtos: CreateLessonDto[]): Promise<LessonEntity[]> {
+    const entities = dtos.map((dto) => {
+      const entity = this.repo.create();
+      entity.userId = userId;
+      entity.name = dto.name;
+      entity.credit = dto.credit;
+      entity.difficulty = dto.difficulty;
+      entity.vizeDate = dto.vizeDate ? new Date(dto.vizeDate) : null;
+      entity.finalDate = dto.finalDate ? new Date(dto.finalDate) : null;
+      entity.homeworkDeadlines = dto.homeworkDeadlines ?? [];
+      entity.semester = dto.semester;
+      entity.delayCount = 0;
+      return entity;
     });
-    if (!lesson) throw new NotFoundException('Ders bulunamadı');
-
-    if (dto.newLessonName) lesson.lessonName = dto.newLessonName;
-    if (dto.difficulty !== undefined) lesson.difficulty = dto.difficulty;
-    if (dto.deadlines !== undefined) lesson.deadlines = dto.deadlines;
-    if (dto.semester !== undefined) lesson.semester = dto.semester;
-
-    return this.lessonRepo.save(lesson);
+    return this.repo.save(entities);
   }
 
-  async applyChecklistResult(
-    id: string,
-    userId: string,
-    plannedHours: number,
-    actualHours: number | null,
-  ): Promise<void> {
-    const lesson = await this.lessonRepo.findOne({ where: { id, userId } });
-    if (!lesson) throw new NotFoundException('Ders bulunamadı');
+  async update(userId: string, lessonName: string, dto: UpdateLessonDto): Promise<LessonEntity> {
+    const lesson = await this.repo.findOne({ where: { userId, name: lessonName } });
+    if (!lesson) throw new NotFoundException(`Lesson "${lessonName}" not found`);
 
-    if (actualHours !== null) {
-      const R = plannedHours - actualHours;
-      if (R !== 0) lesson.delay += 1;
-    } else {
-      lesson.delay += 1;
-    }
+    if (dto.vizeDate) lesson.vizeDate = new Date(dto.vizeDate);
+    if (dto.finalDate) lesson.finalDate = new Date(dto.finalDate);
 
-    await this.lessonRepo.save(lesson);
+    const { vizeDate, finalDate, ...rest } = dto;
+    Object.assign(lesson, rest);
+
+    return this.repo.save(lesson);
   }
 
-  async remove(id: string, userId: string): Promise<void> {
-    const lesson = await this.lessonRepo.findOne({ where: { id, userId } });
-    if (!lesson) throw new NotFoundException('Ders bulunamadı');
-    await this.lessonRepo.remove(lesson);
+  async findByUserId(userId: string): Promise<LessonEntity[]> {
+    return this.repo.find({ where: { userId } });
+  }
+
+  async findById(id: string): Promise<LessonEntity | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
+  async incrementDelay(lessonId: string): Promise<void> {
+    await this.repo.increment({ id: lessonId }, 'delayCount', 1);
   }
 }

@@ -1,122 +1,115 @@
 import { Injectable } from '@nestjs/common';
-import { Lesson } from '../lesson/lesson.model';
+import { LessonEntity } from '../lesson/lesson.entity.js';
+import { UserEntity } from '../user/user.entity.js';
+import { ChecklistEntity } from '../checklist/checklist.entity.js';
+import { daysBetween } from '../../common/utils/date.utils.js';
 
-export interface HeuristicInput {
-  lesson: Lesson;
-  stress: number;  // S = kullanıcı stres seviyesi (0-10)
-  today: Date;
-}
+// Default weights for H = w1*U + w2*R + w3*D*S + w4*B
+const W1 = -0.5; // U: days until deadline (negative → fewer days = higher H)
+const W2 = 1.0;  // R: remaining hours needed
+const W3 = 0.3;  // D*S: difficulty × stress
+const W4 = 2.0;  // B: delay count penalty
 
 export interface HeuristicResult {
   lessonId: string;
   lessonName: string;
-  score: number;       // H skoru
-  studyHours: number;  // X = haftalık çalışma saati
-  urgencyDays: number; // Sınava kaç gün kaldığı
+  H: number;  // priority score (higher = more urgent)
+  U: number;  // days until next exam
+  R: number;  // remaining hours needed this week
+  X: number;  // total weekly hours allocated
+  D: number;  // difficulty
+  S: number;  // stress level
+  B: number;  // delay count
 }
-
-// Ağırlıklar
-const W1 = 0.4; // urgency
-const W2 = 0.3; // remaining (normalized)
-const W3 = 0.2; // difficulty * stress
-const W4 = 0.1; // delay bonus
 
 @Injectable()
 export class HeuristicService {
   /**
-   * Bir dersin bir sonraki sınavına kaç gün kaldığını hesaplar.
-   * Önce vize tarihine bakar; vize geçmişse finale bakar.
-   * Homework deadline'ları ayrıca değerlendirilmez (urgency için exam kullanılır).
+   * X = 14 * D_i / sum(D_all)
+   * Distributes 14 weekly study hours proportionally by difficulty.
    */
-  getNextExamDate(lesson: Lesson, today: Date): string | null {
-    const midterms = lesson.deadlines
-      .filter((d) => d.type === 'midterm')
-      .map((d) => d.date)
-      .sort();
-
-    const finals = lesson.deadlines
-      .filter((d) => d.type === 'final')
-      .map((d) => d.date)
-      .sort();
-
-    const todayStr = today.toISOString().split('T')[0];
-
-    // Geçmemiş vize varsa onu kullan
-    const upcomingMidterm = midterms.find((d) => d >= todayStr);
-    if (upcomingMidterm) return upcomingMidterm;
-
-    // Yoksa geçmemiş finali kullan
-    const upcomingFinal = finals.find((d) => d >= todayStr);
-    return upcomingFinal ?? null;
+  calculateX(lesson: LessonEntity, allLessons: LessonEntity[]): number {
+    const totalD = allLessons.reduce((sum, l) => sum + l.difficulty, 0);
+    if (totalD === 0) return 0;
+    return (14 * lesson.difficulty) / totalD;
   }
 
   /**
-   * U = aciliyet: sınava ne kadar az gün kaldıysa o kadar yüksek
-   * U = 1 / (daysLeft + 1)
-   * Sınav yoksa U = 0
+   * U = days until next relevant exam.
+   * Uses vize date if it hasn't passed; otherwise uses final date.
    */
-  private calcUrgency(lesson: Lesson, today: Date): { U: number; daysLeft: number } {
-    const examDate = this.getNextExamDate(lesson, today);
-    if (!examDate) return { U: 0, daysLeft: Infinity };
+  calculateU(lesson: LessonEntity, now: Date = new Date()): number {
+    const vize = lesson.vizeDate ? new Date(lesson.vizeDate) : null;
+    const final = lesson.finalDate ? new Date(lesson.finalDate) : null;
 
-    const exam = new Date(examDate);
-    const diffMs = exam.getTime() - today.getTime();
-    const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    const U = 1 / (daysLeft + 1);
-    return { U, daysLeft };
+    if (vize && vize > now) return daysBetween(now, vize);
+    if (final && final > now) return daysBetween(now, final);
+    return 0; // both deadlines passed
   }
 
   /**
-   * H = w1*U + w2*R + w3*(D*S/50) + w4*B
-   *
-   * R = remaining normalized: D / sum(D) * 14 çalışma saatine karşı kalan
-   *     Basit hesap: delay yoksa R = 0.5 (nötr), delay arttıkça artar
-   * D = difficulty (1-5)
-   * S = stress (0-10)
-   * B = delay > 0 ? 1 : 0
+   * R = X - totalHoursCompletedThisWeek (from checklist history).
+   * On the first day (Monday / no checklist) R = X.
    */
-  calcScore(input: HeuristicInput, allLessons: Lesson[]): number {
-    const { lesson, stress, today } = input;
+  calculateR(
+    lesson: LessonEntity,
+    allLessons: LessonEntity[],
+    weekChecklists: ChecklistEntity[],
+    isFirstDay: boolean,
+  ): number {
+    const X = this.calculateX(lesson, allLessons);
+    if (isFirstDay || weekChecklists.length === 0) return X;
 
-    const { U, daysLeft } = this.calcUrgency(lesson, today);
+    const completed = weekChecklists.reduce((sum, checklist) => {
+      const entry = checklist.lessons.find((l) => l.lessonId === lesson.id);
+      if (!entry || entry.hoursCompleted === null) return sum;
+      // Infinity encoded as 9999 in DB; treat as full X
+      if (entry.hoursCompleted >= 9999) return sum + X;
+      return sum + Math.max(0, entry.hoursCompleted);
+    }, 0);
+
+    return Math.max(0, X - completed);
+  }
+
+  /**
+   * H = w1*U + w2*R + w3*D*S + w4*B
+   */
+  calculateH(U: number, R: number, D: number, S: number, B: number): number {
+    return W1 * U + W2 * R + W3 * D * S + W4 * B;
+  }
+
+  /**
+   * Full heuristic calculation for a single lesson.
+   */
+  calculate(
+    lesson: LessonEntity,
+    allLessons: LessonEntity[],
+    user: UserEntity,
+    weekChecklists: ChecklistEntity[],
+    isFirstDay: boolean,
+  ): HeuristicResult {
+    const X = this.calculateX(lesson, allLessons);
+    const U = this.calculateU(lesson);
+    const R = this.calculateR(lesson, allLessons, weekChecklists, isFirstDay);
     const D = lesson.difficulty;
-    const S = stress;
-    const B = lesson.delay > 0 ? 1 : 0;
+    const S = user.stressLevel ?? 1;
+    const B = lesson.delayCount;
+    const H = this.calculateH(U, R, D, S, B);
 
-    // R: delay tabanlı kalan iş yükü göstergesi (0-1 arası normalize)
-    const R = Math.min(1, lesson.delay / 5);
-
-    const H = W1 * U + W2 * R + W3 * ((D * S) / 50) + W4 * B;
-
-    void daysLeft; // kullanıldı (urgencyDays için aşağıda tekrar çağırılıyor)
-    return Math.round(H * 1000) / 1000;
+    return { lessonId: lesson.id, lessonName: lesson.name, H, U, R, X, D, S, B };
   }
 
   /**
-   * X = 14 * D / toplam ders D katsayısı toplamı
-   * Her ders için haftalık ayrılacak saat
+   * Rank all lessons for a user by H score (highest first = most urgent).
    */
-  calcStudyHours(lesson: Lesson, allLessons: Lesson[]): number {
-    const totalDifficulty = allLessons.reduce((sum, l) => sum + l.difficulty, 0);
-    if (totalDifficulty === 0) return 0;
-    return Math.round(((14 * lesson.difficulty) / totalDifficulty) * 10) / 10;
-  }
-
-  /**
-   * Tüm dersleri skorla, sırala ve çalışma saatlerini hesapla
-   */
-  rankLessons(lessons: Lesson[], stress: number, today: Date): HeuristicResult[] {
-    const results: HeuristicResult[] = lessons.map((lesson) => {
-      const { daysLeft } = this.calcUrgency(lesson, today);
-      return {
-        lessonId: lesson.id,
-        lessonName: lesson.lessonName,
-        score: this.calcScore({ lesson, stress, today }, lessons),
-        studyHours: this.calcStudyHours(lesson, lessons),
-        urgencyDays: daysLeft === Infinity ? -1 : daysLeft,
-      };
-    });
-
-    return results.sort((a, b) => b.score - a.score);
+  rankLessons(
+    lessons: LessonEntity[],
+    user: UserEntity,
+    weekChecklists: ChecklistEntity[],
+    isFirstDay: boolean,
+  ): HeuristicResult[] {
+    return lessons
+      .map((lesson) => this.calculate(lesson, lessons, user, weekChecklists, isFirstDay))
+      .sort((a, b) => b.H - a.H);
   }
 }

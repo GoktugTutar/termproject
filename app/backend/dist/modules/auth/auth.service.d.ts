@@ -1,8 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
-import { UserService } from '../user/user.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { User } from '../user/user.model';
+import { UserService } from '../user/user.service.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { LoginDto } from './dto/login.dto.js';
 export declare class AuthService {
     private readonly userService;
     private readonly jwtService;
@@ -13,6 +12,5 @@ export declare class AuthService {
     login(dto: LoginDto): Promise<{
         access_token: string;
     }>;
-    getMe(userId: string): Promise<Omit<User, 'password'>>;
-    private signToken;
+    private sign;
 }

@@ -1,13 +1,12 @@
-export type ChecklistStatus = 'pending' | 'early' | 'completed' | 'incomplete' | 'not_done';
-export interface ChecklistItem {
+export interface ChecklistLesson {
+    lessonId: string;
+    allocatedHours: number;
+    hoursCompleted: number | null;
+}
+export interface IChecklist {
     id: string;
     userId: string;
-    lessonId: string;
-    lessonName: string;
     date: string;
-    plannedHours: number;
-    actualHours: number | null;
-    status: ChecklistStatus;
-    remaining: number | null;
-    createdAt: Date | string;
+    lessons: ChecklistLesson[];
+    submitted: boolean;
 }

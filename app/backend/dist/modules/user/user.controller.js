@@ -14,44 +14,33 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserController = void 0;
 const common_1 = require("@nestjs/common");
-const user_service_1 = require("./user.service");
-const update_user_profile_dto_1 = require("./dto/update-user-profile.dto");
-const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const jwt_auth_guard_js_1 = require("../auth/guards/jwt-auth.guard.js");
+const current_user_decorator_js_1 = require("../../common/decorators/current-user.decorator.js");
+const user_service_js_1 = require("./user.service.js");
+const update_user_profile_dto_js_1 = require("./dto/update-user-profile.dto.js");
+const user_entity_js_1 = require("./user.entity.js");
 let UserController = class UserController {
     userService;
     constructor(userService) {
         this.userService = userService;
     }
-    async getMe(req) {
-        const user = await this.userService.findById(req.user.sub);
-        if (!user)
-            return null;
-        const { password: _pw, ...rest } = user;
-        return rest;
-    }
-    update(req, dto) {
-        return this.userService.updateProfile(req.user.sub, dto);
+    updateProfile(user, dto) {
+        return this.userService.updateProfile(user.id, dto);
     }
 };
 exports.UserController = UserController;
 __decorate([
-    (0, common_1.Get)('me'),
-    __param(0, (0, common_1.Req)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], UserController.prototype, "getMe", null);
-__decorate([
-    (0, common_1.Patch)('update'),
-    __param(0, (0, common_1.Req)()),
+    (0, common_1.Put)('update'),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, update_user_profile_dto_1.UpdateUserProfileDto]),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity,
+        update_user_profile_dto_js_1.UpdateUserProfileDto]),
     __metadata("design:returntype", void 0)
-], UserController.prototype, "update", null);
+], UserController.prototype, "updateProfile", null);
 exports.UserController = UserController = __decorate([
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard),
     (0, common_1.Controller)('person'),
-    __metadata("design:paramtypes", [user_service_1.UserService])
+    __metadata("design:paramtypes", [user_service_js_1.UserService])
 ], UserController);
 //# sourceMappingURL=user.controller.js.map

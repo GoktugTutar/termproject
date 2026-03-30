@@ -1,50 +1,32 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
-import { LessonService } from './lesson.service';
-import { CreateLessonDto } from './dto/create-lesson.dto';
-import { UpdateLessonDto } from './dto/update-lesson.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Controller, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { LessonService } from './lesson.service.js';
+import { CreateLessonDto } from './dto/create-lesson.dto.js';
+import { UpdateLessonDto } from './dto/update-lesson.dto.js';
+import { UserEntity } from '../user/user.entity.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('lesson')
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}
 
-  /**
-   * POST /lesson/register
-   * JSON dizisi olarak birden fazla ders kaydeder
-   */
+  // POST /lesson/register — body: CreateLessonDto[]
   @Post('register')
-  register(@Req() req: any, @Body() dtos: CreateLessonDto[]) {
-    return this.lessonService.bulkCreate(req.user.sub, dtos);
+  register(
+    @CurrentUser() user: UserEntity,
+    @Body() dtos: CreateLessonDto[],
+  ) {
+    return this.lessonService.registerMany(user.id, dtos);
   }
 
-  @Get()
-  findAll(@Req() req: any) {
-    return this.lessonService.findAllByUser(req.user.sub);
-  }
-
-  /**
-   * PATCH /lesson/update
-   * Ders adına göre günceller
-   */
-  @Patch('update')
-  update(@Req() req: any, @Body() dto: UpdateLessonDto) {
-    return this.lessonService.update(req.user.sub, dto);
-  }
-
-  @Delete(':id')
-  remove(@Req() req: any, @Param('id') id: string) {
-    this.lessonService.remove(id, req.user.sub);
-    return { message: 'Ders silindi' };
+  // PUT /lesson/update/:name
+  @Put('update/:name')
+  update(
+    @CurrentUser() user: UserEntity,
+    @Param('name') name: string,
+    @Body() dto: UpdateLessonDto,
+  ) {
+    return this.lessonService.update(user.id, name, dto);
   }
 }

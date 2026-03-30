@@ -1,111 +1,157 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ChecklistEntity } from './checklist.entity';
-import { ChecklistItem, ChecklistStatus } from './checklist.model';
-import { SubmitChecklistDto } from './dto/submit-checklist.dto';
-import { LessonService } from '../lesson/lesson.service';
+import { Between, Repository } from 'typeorm';
+import { ChecklistEntity } from './checklist.entity.js';
+import { SubmitChecklistDto } from './dto/submit-checklist.dto.js';
+import { LessonService } from '../lesson/lesson.service.js';
+import { ScheduleEntity } from '../planner/schedule.entity.js';
+import { todayString, getDayName } from '../../common/utils/date.utils.js';
 
 @Injectable()
 export class ChecklistService {
   constructor(
     @InjectRepository(ChecklistEntity)
-    private readonly checklistRepo: Repository<ChecklistEntity>,
+    private readonly repo: Repository<ChecklistEntity>,
+    @InjectRepository(ScheduleEntity)
+    private readonly scheduleRepo: Repository<ScheduleEntity>,
     private readonly lessonService: LessonService,
   ) {}
 
-  async getAll(userId: string): Promise<ChecklistItem[]> {
-    return this.checklistRepo.find({ where: { userId } }) as unknown as Promise<ChecklistItem[]>;
-  }
+  /**
+   * /checklist/create
+   * Reads today's slots from the current schedule and builds the daily checklist.
+   */
+  async createForToday(userId: string): Promise<ChecklistEntity> {
+    const today = todayString();
 
-  async getToday(userId: string): Promise<ChecklistItem[]> {
-    const today = new Date().toISOString().split('T')[0];
-    return this.checklistRepo.find({ where: { userId, date: today } }) as unknown as Promise<ChecklistItem[]>;
-  }
+    const existing = await this.repo.findOne({ where: { userId, date: today } });
+    if (existing) return existing;
 
-  async createFromSlots(
-    userId: string,
-    slots: { lessonId: string; lessonName: string; hours: number }[],
-  ): Promise<ChecklistItem[]> {
-    const today = new Date().toISOString().split('T')[0];
-    const entities = slots.map((slot) =>
-      this.checklistRepo.create({
-        userId,
-        lessonId: slot.lessonId,
-        lessonName: slot.lessonName,
-        date: today,
-        plannedHours: slot.hours,
-        actualHours: null,
-        status: 'pending',
-        remaining: null,
-      }),
-    );
-    const saved = await this.checklistRepo.save(entities);
-    return saved as unknown as ChecklistItem[];
-  }
-
-  async submit(
-    userId: string,
-    dto: SubmitChecklistDto,
-  ): Promise<ChecklistItem & { remainingDisplay: string }> {
-    const today = new Date().toISOString().split('T')[0];
-
-    let item = await this.checklistRepo.findOne({
-      where: { userId, lessonId: dto.lessonId, date: today },
+    const schedule = await this.scheduleRepo.findOne({
+      where: { userId },
+      order: { startDate: 'DESC' },
     });
 
-    if (!item) {
-      const lesson = await this.lessonService.findById(dto.lessonId);
-      if (!lesson) throw new NotFoundException('Ders bulunamadı');
-
-      item = this.checklistRepo.create({
-        userId,
-        lessonId: dto.lessonId,
-        lessonName: lesson.lessonName,
-        date: today,
-        plannedHours: 0,
-        actualHours: null,
-        status: 'pending',
-        remaining: null,
-      });
+    if (!schedule) {
+      throw new NotFoundException('No schedule found. Run /planner/create first.');
     }
 
-    let remaining: number | null = null;
-    const status = dto.status;
+    const dayName = getDayName();
+    const todaySlots: Record<string, string> = schedule.schedule[dayName] ?? {};
 
-    if (status === 'not_done') {
-      item.actualHours = 0;
-      remaining = null;
-    } else if (status === 'completed') {
-      item.actualHours = item.plannedHours;
-      remaining = 0;
-    } else {
-      item.actualHours = dto.actualHours ?? 0;
-      remaining = item.plannedHours - item.actualHours;
+    // Aggregate hours per lesson
+    const hoursMap = new Map<string, number>();
+    for (const [range, value] of Object.entries(todaySlots)) {
+      if (value.startsWith('busy:')) continue;
+      const [s, e] = range.split('-').map(Number);
+      hoursMap.set(value, (hoursMap.get(value) ?? 0) + (e - s));
     }
 
-    item.status = status;
-    item.remaining = remaining;
-    await this.checklistRepo.save(item);
+    const lessons = [...hoursMap.entries()].map(([lessonId, allocatedHours]) => ({
+      lessonId,
+      allocatedHours,
+      hoursCompleted: null,
+    }));
 
-    await this.lessonService.applyChecklistResult(
-      dto.lessonId,
-      userId,
-      item.plannedHours,
-      status === 'not_done' ? null : item.actualHours,
-    );
+    const checklist = this.repo.create({ userId, date: today, lessons, submitted: false });
+    return this.repo.save(checklist);
+  }
+
+  /**
+   * /checklist/get
+   * Returns today's checklist with remaining time (R) per lesson.
+   */
+  async getTodayChecklist(userId: string) {
+    const today = todayString();
+    const checklist = await this.repo.findOne({ where: { userId, date: today } });
+    if (!checklist) throw new NotFoundException('No checklist for today');
 
     return {
-      ...(item as unknown as ChecklistItem),
-      remainingDisplay: this.formatRemaining(status as ChecklistStatus, remaining),
+      id: checklist.id,
+      date: checklist.date,
+      submitted: checklist.submitted,
+      lessons: checklist.lessons.map((l) => ({
+        lessonId: l.lessonId,
+        allocatedHours: l.allocatedHours,
+        // R = remaining = allocatedHours - hoursCompleted (null = not yet submitted)
+        remainingHours:
+          l.hoursCompleted === null
+            ? l.allocatedHours
+            : Math.max(0, l.allocatedHours - Math.abs(l.hoursCompleted)),
+        hoursCompleted: l.hoursCompleted,
+      })),
     };
   }
 
-  private formatRemaining(status: ChecklistStatus, remaining: number | null): string {
-    if (status === 'not_done') return 'inf';
-    if (status === 'completed') return '0';
-    if (remaining === null) return 'inf';
-    if (remaining < 0) return `-${Math.abs(remaining)}`;
-    return `${remaining}`;
+  /**
+   * /checklist/submit
+   * Persists completion data, increments delay for unfinished lessons,
+   * and marks early-completed lessons (9999) so planner can drop their future slots.
+   */
+  async submit(userId: string, dto: SubmitChecklistDto): Promise<ChecklistEntity> {
+    const today = todayString();
+    const checklist = await this.repo.findOne({ where: { userId, date: today } });
+    if (!checklist) throw new NotFoundException('No checklist for today');
+    if (checklist.submitted) throw new BadRequestException('Already submitted');
+
+    // Map incoming data
+    const submissionMap = new Map(dto.lessons.map((l) => [l.lessonId, l.hoursCompleted]));
+
+    for (const entry of checklist.lessons) {
+      const hours = submissionMap.get(entry.lessonId);
+      if (hours === undefined) continue;
+      entry.hoursCompleted = hours;
+
+      const isDelay = hours < 0 || hours === -9999;
+      if (isDelay) {
+        await this.lessonService.incrementDelay(entry.lessonId);
+      }
+    }
+
+    checklist.submitted = true;
+    return this.repo.save(checklist);
+  }
+
+  /**
+   * Returns all checklists for the current ISO week (Mon–Sun).
+   */
+  async getWeekChecklists(userId: string): Promise<ChecklistEntity[]> {
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun, 1=Mon...
+    const diffToMon = (day === 0 ? -6 : 1 - day);
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMon);
+    monday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    return this.repo.find({
+      where: {
+        userId,
+        date: Between(
+          monday.toISOString().split('T')[0],
+          sunday.toISOString().split('T')[0],
+        ),
+      },
+    });
+  }
+
+  /**
+   * Returns the set of lesson IDs that were finished early this week.
+   */
+  async getEarlyCompletedIds(userId: string): Promise<string[]> {
+    const checklists = await this.getWeekChecklists(userId);
+    const ids = new Set<string>();
+    for (const cl of checklists) {
+      for (const l of cl.lessons) {
+        if (l.hoursCompleted === 9999) ids.add(l.lessonId);
+      }
+    }
+    return [...ids];
   }
 }

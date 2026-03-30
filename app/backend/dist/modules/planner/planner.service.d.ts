@@ -1,32 +1,19 @@
-import { UserService } from '../user/user.service';
-import { LessonService } from '../lesson/lesson.service';
-import { HeuristicService, HeuristicResult } from '../heuristic/heuristic.service';
-export interface DailySlot {
-    day: string;
-    dayLabel: string;
-    lessonId: string;
-    lessonName: string;
-    hours: number;
-    score: number;
-}
-export interface DailyPlan {
-    date: string;
-    freeHours: number;
-    slots: DailySlot[];
-}
-export interface WeeklySchedule {
-    generatedAt: string;
-    weekStart: string;
-    slots: DailySlot[];
-    ranked: HeuristicResult[];
-}
+import { Repository } from 'typeorm';
+import { ScheduleEntity } from './schedule.entity.js';
+import { HeuristicService } from '../heuristic/heuristic.service.js';
+import { LessonService } from '../lesson/lesson.service.js';
+import { UserService } from '../user/user.service.js';
+import { ChecklistService } from '../checklist/checklist.service.js';
 export declare class PlannerService {
-    private readonly userService;
-    private readonly lessonService;
+    private readonly scheduleRepo;
     private readonly heuristicService;
-    constructor(userService: UserService, lessonService: LessonService, heuristicService: HeuristicService);
-    createWeeklyPlan(userId: string): Promise<WeeklySchedule>;
-    createDailyPlan(userId: string, freeHours: number): Promise<DailyPlan>;
-    private buildWeekDays;
-    private todayStr;
+    private readonly lessonService;
+    private readonly userService;
+    private readonly checklistService;
+    constructor(scheduleRepo: Repository<ScheduleEntity>, heuristicService: HeuristicService, lessonService: LessonService, userService: UserService, checklistService: ChecklistService);
+    create(userId: string): Promise<ScheduleEntity | null>;
+    getSchedule(userId: string): Promise<ScheduleEntity | null>;
+    private buildWeeklySchedule;
+    private expandBusyHours;
+    private currentWeekRange;
 }

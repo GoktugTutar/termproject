@@ -1,6 +1,6 @@
-import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
+import { AuthService } from './auth.service.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { LoginDto } from './dto/login.dto.js';
 export declare class AuthController {
     private readonly authService;
     constructor(authService: AuthService);
@@ -10,5 +10,4 @@ export declare class AuthController {
     login(dto: LoginDto): Promise<{
         access_token: string;
     }>;
-    getMe(req: any): Promise<Omit<import("../user/user.model").User, "password">>;
 }

@@ -1,32 +1,33 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthModule } from './modules/auth/auth.module';
-import { UserModule } from './modules/user/user.module';
-import { LessonModule } from './modules/lesson/lesson.module';
-import { HeuristicModule } from './modules/heuristic/heuristic.module';
-import { PlannerModule } from './modules/planner/planner.module';
-import { ChecklistModule } from './modules/checklist/checklist.module';
-import { UserEntity } from './modules/user/user.entity';
-import { LessonEntity } from './modules/lesson/lesson.entity';
-import { ChecklistEntity } from './modules/checklist/checklist.entity';
+import { AuthModule } from './modules/auth/auth.module.js';
+import { UserModule } from './modules/user/user.module.js';
+import { LessonModule } from './modules/lesson/lesson.module.js';
+import { HeuristicModule } from './modules/heuristic/heuristic.module.js';
+import { PlannerModule } from './modules/planner/planner.module.js';
+import { ChecklistModule } from './modules/checklist/checklist.module.js';
+import { UserEntity } from './modules/user/user.entity.js';
+import { LessonEntity } from './modules/lesson/lesson.entity.js';
+import { ChecklistEntity } from './modules/checklist/checklist.entity.js';
+import { ScheduleEntity } from './modules/planner/schedule.entity.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
+      inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
-        host: config.get<string>('DB_HOST', 'localhost'),
+        host: config.get('DB_HOST', 'localhost'),
         port: config.get<number>('DB_PORT', 5432),
-        username: config.get<string>('DB_USERNAME', 'postgres'),
-        password: config.get<string>('DB_PASSWORD', ''),
-        database: config.get<string>('DB_NAME', 'termproject'),
-        entities: [UserEntity, LessonEntity, ChecklistEntity],
+        username: config.get('DB_USER', 'postgres'),
+        password: config.get('DB_PASSWORD', 'postgres'),
+        database: config.get('DB_NAME', 'termproject'),
+        entities: [UserEntity, LessonEntity, ChecklistEntity, ScheduleEntity],
         synchronize: true,
       }),
-      inject: [ConfigService],
     }),
     AuthModule,
     UserModule,

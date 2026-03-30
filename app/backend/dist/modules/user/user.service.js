@@ -16,40 +16,34 @@ exports.UserService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
-const user_entity_1 = require("./user.entity");
+const user_entity_js_1 = require("./user.entity.js");
 let UserService = class UserService {
-    userRepo;
-    constructor(userRepo) {
-        this.userRepo = userRepo;
-    }
-    async findById(id) {
-        return this.userRepo.findOne({ where: { id } });
-    }
-    async findByEmail(email) {
-        return this.userRepo.findOne({ where: { email } });
+    repo;
+    constructor(repo) {
+        this.repo = repo;
     }
     async create(data) {
-        const user = this.userRepo.create({
-            email: data.email,
-            password: data.password,
-            stress: 5,
-            busyTimes: [],
-        });
-        return this.userRepo.save(user);
+        const user = this.repo.create(data);
+        return this.repo.save(user);
+    }
+    async findById(id) {
+        return this.repo.findOne({ where: { id } });
+    }
+    async findByEmail(email) {
+        return this.repo.findOne({ where: { email } });
     }
     async updateProfile(id, dto) {
-        await this.userRepo.update(id, dto);
-        const user = await this.userRepo.findOne({ where: { id } });
+        const user = await this.findById(id);
         if (!user)
-            throw new Error('Kullanıcı bulunamadı');
-        const { password: _pw, ...rest } = user;
-        return rest;
+            throw new common_1.NotFoundException('User not found');
+        Object.assign(user, dto);
+        return this.repo.save(user);
     }
 };
 exports.UserService = UserService;
 exports.UserService = UserService = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.UserEntity)),
+    __param(0, (0, typeorm_1.InjectRepository)(user_entity_js_1.UserEntity)),
     __metadata("design:paramtypes", [typeorm_2.Repository])
 ], UserService);
 //# sourceMappingURL=user.service.js.map

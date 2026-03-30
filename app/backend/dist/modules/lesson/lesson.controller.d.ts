@@ -1,13 +1,10 @@
-import { LessonService } from './lesson.service';
-import { CreateLessonDto } from './dto/create-lesson.dto';
-import { UpdateLessonDto } from './dto/update-lesson.dto';
+import { LessonService } from './lesson.service.js';
+import { CreateLessonDto } from './dto/create-lesson.dto.js';
+import { UpdateLessonDto } from './dto/update-lesson.dto.js';
+import { UserEntity } from '../user/user.entity.js';
 export declare class LessonController {
     private readonly lessonService;
     constructor(lessonService: LessonService);
-    register(req: any, dtos: CreateLessonDto[]): Promise<import("./lesson.model").Lesson[]>;
-    findAll(req: any): Promise<import("./lesson.model").Lesson[]>;
-    update(req: any, dto: UpdateLessonDto): Promise<import("./lesson.model").Lesson>;
-    remove(req: any, id: string): {
-        message: string;
-    };
+    register(user: UserEntity, dtos: CreateLessonDto[]): Promise<import("./lesson.entity.js").LessonEntity[]>;
+    update(user: UserEntity, name: string, dto: UpdateLessonDto): Promise<import("./lesson.entity.js").LessonEntity>;
 }

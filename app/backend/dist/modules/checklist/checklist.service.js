@@ -16,97 +16,123 @@ exports.ChecklistService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
-const checklist_entity_1 = require("./checklist.entity");
-const lesson_service_1 = require("../lesson/lesson.service");
+const checklist_entity_js_1 = require("./checklist.entity.js");
+const lesson_service_js_1 = require("../lesson/lesson.service.js");
+const schedule_entity_js_1 = require("../planner/schedule.entity.js");
+const date_utils_js_1 = require("../../common/utils/date.utils.js");
 let ChecklistService = class ChecklistService {
-    checklistRepo;
+    repo;
+    scheduleRepo;
     lessonService;
-    constructor(checklistRepo, lessonService) {
-        this.checklistRepo = checklistRepo;
+    constructor(repo, scheduleRepo, lessonService) {
+        this.repo = repo;
+        this.scheduleRepo = scheduleRepo;
         this.lessonService = lessonService;
     }
-    async getAll(userId) {
-        return this.checklistRepo.find({ where: { userId } });
-    }
-    async getToday(userId) {
-        const today = new Date().toISOString().split('T')[0];
-        return this.checklistRepo.find({ where: { userId, date: today } });
-    }
-    async createFromSlots(userId, slots) {
-        const today = new Date().toISOString().split('T')[0];
-        const entities = slots.map((slot) => this.checklistRepo.create({
-            userId,
-            lessonId: slot.lessonId,
-            lessonName: slot.lessonName,
-            date: today,
-            plannedHours: slot.hours,
-            actualHours: null,
-            status: 'pending',
-            remaining: null,
-        }));
-        const saved = await this.checklistRepo.save(entities);
-        return saved;
-    }
-    async submit(userId, dto) {
-        const today = new Date().toISOString().split('T')[0];
-        let item = await this.checklistRepo.findOne({
-            where: { userId, lessonId: dto.lessonId, date: today },
+    async createForToday(userId) {
+        const today = (0, date_utils_js_1.todayString)();
+        const existing = await this.repo.findOne({ where: { userId, date: today } });
+        if (existing)
+            return existing;
+        const schedule = await this.scheduleRepo.findOne({
+            where: { userId },
+            order: { startDate: 'DESC' },
         });
-        if (!item) {
-            const lesson = await this.lessonService.findById(dto.lessonId);
-            if (!lesson)
-                throw new common_1.NotFoundException('Ders bulunamadı');
-            item = this.checklistRepo.create({
-                userId,
-                lessonId: dto.lessonId,
-                lessonName: lesson.lessonName,
-                date: today,
-                plannedHours: 0,
-                actualHours: null,
-                status: 'pending',
-                remaining: null,
-            });
+        if (!schedule) {
+            throw new common_1.NotFoundException('No schedule found. Run /planner/create first.');
         }
-        let remaining = null;
-        const status = dto.status;
-        if (status === 'not_done') {
-            item.actualHours = 0;
-            remaining = null;
+        const dayName = (0, date_utils_js_1.getDayName)();
+        const todaySlots = schedule.schedule[dayName] ?? {};
+        const hoursMap = new Map();
+        for (const [range, value] of Object.entries(todaySlots)) {
+            if (value.startsWith('busy:'))
+                continue;
+            const [s, e] = range.split('-').map(Number);
+            hoursMap.set(value, (hoursMap.get(value) ?? 0) + (e - s));
         }
-        else if (status === 'completed') {
-            item.actualHours = item.plannedHours;
-            remaining = 0;
-        }
-        else {
-            item.actualHours = dto.actualHours ?? 0;
-            remaining = item.plannedHours - item.actualHours;
-        }
-        item.status = status;
-        item.remaining = remaining;
-        await this.checklistRepo.save(item);
-        await this.lessonService.applyChecklistResult(dto.lessonId, userId, item.plannedHours, status === 'not_done' ? null : item.actualHours);
+        const lessons = [...hoursMap.entries()].map(([lessonId, allocatedHours]) => ({
+            lessonId,
+            allocatedHours,
+            hoursCompleted: null,
+        }));
+        const checklist = this.repo.create({ userId, date: today, lessons, submitted: false });
+        return this.repo.save(checklist);
+    }
+    async getTodayChecklist(userId) {
+        const today = (0, date_utils_js_1.todayString)();
+        const checklist = await this.repo.findOne({ where: { userId, date: today } });
+        if (!checklist)
+            throw new common_1.NotFoundException('No checklist for today');
         return {
-            ...item,
-            remainingDisplay: this.formatRemaining(status, remaining),
+            id: checklist.id,
+            date: checklist.date,
+            submitted: checklist.submitted,
+            lessons: checklist.lessons.map((l) => ({
+                lessonId: l.lessonId,
+                allocatedHours: l.allocatedHours,
+                remainingHours: l.hoursCompleted === null
+                    ? l.allocatedHours
+                    : Math.max(0, l.allocatedHours - Math.abs(l.hoursCompleted)),
+                hoursCompleted: l.hoursCompleted,
+            })),
         };
     }
-    formatRemaining(status, remaining) {
-        if (status === 'not_done')
-            return 'inf';
-        if (status === 'completed')
-            return '0';
-        if (remaining === null)
-            return 'inf';
-        if (remaining < 0)
-            return `-${Math.abs(remaining)}`;
-        return `${remaining}`;
+    async submit(userId, dto) {
+        const today = (0, date_utils_js_1.todayString)();
+        const checklist = await this.repo.findOne({ where: { userId, date: today } });
+        if (!checklist)
+            throw new common_1.NotFoundException('No checklist for today');
+        if (checklist.submitted)
+            throw new common_1.BadRequestException('Already submitted');
+        const submissionMap = new Map(dto.lessons.map((l) => [l.lessonId, l.hoursCompleted]));
+        for (const entry of checklist.lessons) {
+            const hours = submissionMap.get(entry.lessonId);
+            if (hours === undefined)
+                continue;
+            entry.hoursCompleted = hours;
+            const isDelay = hours < 0 || hours === -9999;
+            if (isDelay) {
+                await this.lessonService.incrementDelay(entry.lessonId);
+            }
+        }
+        checklist.submitted = true;
+        return this.repo.save(checklist);
+    }
+    async getWeekChecklists(userId) {
+        const now = new Date();
+        const day = now.getDay();
+        const diffToMon = (day === 0 ? -6 : 1 - day);
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + diffToMon);
+        monday.setHours(0, 0, 0, 0);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        return this.repo.find({
+            where: {
+                userId,
+                date: (0, typeorm_2.Between)(monday.toISOString().split('T')[0], sunday.toISOString().split('T')[0]),
+            },
+        });
+    }
+    async getEarlyCompletedIds(userId) {
+        const checklists = await this.getWeekChecklists(userId);
+        const ids = new Set();
+        for (const cl of checklists) {
+            for (const l of cl.lessons) {
+                if (l.hoursCompleted === 9999)
+                    ids.add(l.lessonId);
+            }
+        }
+        return [...ids];
     }
 };
 exports.ChecklistService = ChecklistService;
 exports.ChecklistService = ChecklistService = __decorate([
     (0, common_1.Injectable)(),
-    __param(0, (0, typeorm_1.InjectRepository)(checklist_entity_1.ChecklistEntity)),
+    __param(0, (0, typeorm_1.InjectRepository)(checklist_entity_js_1.ChecklistEntity)),
+    __param(1, (0, typeorm_1.InjectRepository)(schedule_entity_js_1.ScheduleEntity)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
-        lesson_service_1.LessonService])
+        typeorm_2.Repository,
+        lesson_service_js_1.LessonService])
 ], ChecklistService);
 //# sourceMappingURL=checklist.service.js.map

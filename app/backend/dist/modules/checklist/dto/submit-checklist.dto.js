@@ -9,26 +9,30 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SubmitChecklistDto = void 0;
+exports.SubmitChecklistDto = exports.LessonSubmissionDto = void 0;
 const class_validator_1 = require("class-validator");
-class SubmitChecklistDto {
+const class_transformer_1 = require("class-transformer");
+class LessonSubmissionDto {
     lessonId;
-    actualHours;
-    status;
+    hoursCompleted;
 }
-exports.SubmitChecklistDto = SubmitChecklistDto;
+exports.LessonSubmissionDto = LessonSubmissionDto;
 __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], SubmitChecklistDto.prototype, "lessonId", void 0);
+], LessonSubmissionDto.prototype, "lessonId", void 0);
 __decorate([
-    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
-], SubmitChecklistDto.prototype, "actualHours", void 0);
+], LessonSubmissionDto.prototype, "hoursCompleted", void 0);
+class SubmitChecklistDto {
+    lessons;
+}
+exports.SubmitChecklistDto = SubmitChecklistDto;
 __decorate([
-    (0, class_validator_1.IsIn)(['early', 'completed', 'incomplete', 'not_done']),
-    __metadata("design:type", String)
-], SubmitChecklistDto.prototype, "status", void 0);
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => LessonSubmissionDto),
+    __metadata("design:type", Array)
+], SubmitChecklistDto.prototype, "lessons", void 0);
 //# sourceMappingURL=submit-checklist.dto.js.map

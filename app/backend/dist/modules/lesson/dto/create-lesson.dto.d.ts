@@ -1,11 +1,9 @@
-export declare class DeadlineDto {
-    type: 'midterm' | 'final' | 'homework';
-    date: string;
-    label?: string;
-}
 export declare class CreateLessonDto {
-    lessonName: string;
+    name: string;
+    credit: number;
     difficulty: number;
-    deadlines: DeadlineDto[];
-    semester: string;
+    vizeDate?: string;
+    finalDate?: string;
+    homeworkDeadlines?: string[];
+    semester: number;
 }
