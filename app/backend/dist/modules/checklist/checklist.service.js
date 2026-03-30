@@ -30,6 +30,9 @@ let ChecklistService = class ChecklistService {
         this.lessonService = lessonService;
     }
     async createForToday(userId) {
+        if ((0, date_utils_js_1.getDayName)() === 'sunday') {
+            throw new common_1.BadRequestException('Pazar günü checklist oluşturulmaz. Yeni haftanın programını oluşturmak için /planner/create kullanın.');
+        }
         const today = (0, date_utils_js_1.todayString)();
         const existing = await this.repo.findOne({ where: { userId, date: today } });
         if (existing)
@@ -113,6 +116,11 @@ let ChecklistService = class ChecklistService {
                 date: (0, typeorm_2.Between)(monday.toISOString().split('T')[0], sunday.toISOString().split('T')[0]),
             },
         });
+    }
+    async isTodaySubmitted(userId) {
+        const today = (0, date_utils_js_1.todayString)();
+        const checklist = await this.repo.findOne({ where: { userId, date: today } });
+        return checklist?.submitted ?? false;
     }
     async getEarlyCompletedIds(userId) {
         const checklists = await this.getWeekChecklists(userId);

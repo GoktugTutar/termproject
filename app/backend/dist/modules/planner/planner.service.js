@@ -40,6 +40,19 @@ let PlannerService = class PlannerService {
         this.checklistService = checklistService;
     }
     async create(userId) {
+        const { startDate, endDate } = this.currentWeekRange();
+        const today = (0, date_utils_js_1.todayString)();
+        const dayName = (0, date_utils_js_1.getDayName)();
+        const existing = await this.scheduleRepo.findOne({ where: { userId, startDate } });
+        if (existing?.lastUpdatedDate === today) {
+            return existing;
+        }
+        if (dayName !== 'sunday') {
+            const submitted = await this.checklistService.isTodaySubmitted(userId);
+            if (!submitted) {
+                throw new common_1.BadRequestException('Programı güncellemek için önce bugünün checklistini doldurmanız gerekiyor.');
+            }
+        }
         const [user, lessons, weekChecklists, earlyIds] = await Promise.all([
             this.userService.findById(userId),
             this.lessonService.findByUserId(userId),
@@ -48,30 +61,51 @@ let PlannerService = class PlannerService {
         ]);
         if (!user)
             return null;
-        const firstDay = (0, date_utils_js_1.isMonday)();
-        const ranked = this.heuristicService.rankLessons(lessons, user, weekChecklists, firstDay);
+        const isFirstCall = !existing;
+        const ranked = this.heuristicService.rankLessons(lessons, user, weekChecklists, isFirstCall);
         const activeLessons = ranked.filter((r) => !earlyIds.includes(r.lessonId));
-        const schedule = this.buildWeeklySchedule(activeLessons, user.busyTimes ?? {});
-        const { startDate, endDate } = this.currentWeekRange();
-        const existing = await this.scheduleRepo.findOne({ where: { userId, startDate } });
-        if (existing) {
-            existing.schedule = schedule;
-            existing.endDate = endDate;
-            return this.scheduleRepo.save(existing);
+        if (isFirstCall) {
+            const schedule = this.buildFullWeek(activeLessons, user.busyTimes ?? {});
+            const entity = this.scheduleRepo.create({
+                userId, startDate, endDate, schedule, lastUpdatedDate: today,
+            });
+            return this.scheduleRepo.save(entity);
         }
-        const entity = this.scheduleRepo.create({ userId, startDate, endDate, schedule });
-        return this.scheduleRepo.save(entity);
+        existing.schedule = this.updateFutureDays(existing.schedule, activeLessons, user.busyTimes ?? {});
+        existing.lastUpdatedDate = today;
+        return this.scheduleRepo.save(existing);
     }
     async getSchedule(userId) {
-        return this.scheduleRepo.findOne({
-            where: { userId },
-            order: { startDate: 'DESC' },
-        });
+        const { startDate } = this.currentWeekRange();
+        const schedule = await this.scheduleRepo.findOne({ where: { userId, startDate } });
+        if (!schedule) {
+            throw new common_1.NotFoundException('Bu hafta için program bulunamadı. Lütfen önce günlük checklistinizi doldurun.');
+        }
+        return schedule;
     }
-    buildWeeklySchedule(ranked, busyTimes) {
+    buildFullWeek(ranked, busyTimes) {
         const remaining = new Map(ranked.map((r) => [r.lessonId, Math.max(1, Math.ceil(r.X))]));
+        return this.fillDays(DAYS, ranked, remaining, busyTimes);
+    }
+    updateFutureDays(existingSchedule, ranked, busyTimes) {
+        const todayIndex = DAYS.indexOf((0, date_utils_js_1.getDayName)());
+        const newSchedule = {};
+        for (let i = 0; i <= todayIndex; i++) {
+            newSchedule[DAYS[i]] = existingSchedule[DAYS[i]] ?? {};
+        }
+        const futureDays = DAYS.slice(todayIndex + 1);
+        if (futureDays.length === 0)
+            return newSchedule;
+        const remaining = new Map(ranked.map((r) => [r.lessonId, Math.max(0, Math.ceil(r.R))]));
+        const filledFuture = this.fillDays(futureDays, ranked, remaining, busyTimes);
+        for (const day of futureDays) {
+            newSchedule[day] = filledFuture[day];
+        }
+        return newSchedule;
+    }
+    fillDays(days, ranked, remaining, busyTimes) {
         const schedule = {};
-        for (const day of DAYS) {
+        for (const day of days) {
             schedule[day] = {};
             const busyDay = busyTimes[day] ?? {};
             for (const [range, label] of Object.entries(busyDay)) {
@@ -88,16 +122,14 @@ let PlannerService = class PlannerService {
                 const rem = remaining.get(lessonId) ?? 0;
                 if (rem <= 0 || slotPtr >= freeHours.length)
                     continue;
-                const todayHours = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY);
-                const available = freeHours.length - slotPtr;
-                const assign = Math.min(todayHours, available);
-                if (assign > 0) {
-                    const start = freeHours[slotPtr];
-                    const end = freeHours[slotPtr + assign - 1] + 1;
-                    schedule[day][(0, date_utils_js_1.formatTimeRange)(start, end)] = lessonId;
-                    remaining.set(lessonId, rem - assign);
-                    slotPtr += assign;
-                }
+                const assign = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY, freeHours.length - slotPtr);
+                if (assign <= 0)
+                    continue;
+                const start = freeHours[slotPtr];
+                const end = freeHours[slotPtr + assign - 1] + 1;
+                schedule[day][(0, date_utils_js_1.formatTimeRange)(start, end)] = lessonId;
+                remaining.set(lessonId, rem - assign);
+                slotPtr += assign;
             }
         }
         return schedule;
@@ -114,7 +146,7 @@ let PlannerService = class PlannerService {
     currentWeekRange() {
         const now = new Date();
         const day = now.getDay();
-        const diffToMon = day === 0 ? -6 : 1 - day;
+        const diffToMon = day === 0 ? 1 : 1 - day;
         const monday = new Date(now);
         monday.setDate(now.getDate() + diffToMon);
         const sunday = new Date(monday);

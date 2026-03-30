@@ -24,4 +24,7 @@ export class ScheduleEntity {
 
   @Column({ type: 'jsonb' })
   schedule: Record<string, Record<string, string>>;
+
+  @Column({ type: 'date', nullable: true })
+  lastUpdatedDate: string | null; // Son güncelleme tarihi — aynı gün tekrar hesaplamamak için
 }

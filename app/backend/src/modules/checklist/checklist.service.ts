@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { ChecklistEntity } from './checklist.entity.js';
@@ -26,6 +27,13 @@ export class ChecklistService {
    * Reads today's slots from the current schedule and builds the daily checklist.
    */
   async createForToday(userId: string): Promise<ChecklistEntity> {
+    // Pazar günü checklist oluşturulmaz — yeni haftanın programı oluşturulur
+    if (getDayName() === 'sunday') {
+      throw new BadRequestException(
+        'Pazar günü checklist oluşturulmaz. Yeni haftanın programını oluşturmak için /planner/create kullanın.',
+      );
+    }
+
     const today = todayString();
 
     const existing = await this.repo.findOne({ where: { userId, date: today } });
@@ -139,6 +147,13 @@ export class ChecklistService {
         ),
       },
     });
+  }
+
+  /** Bugünün checklistinin submit edilip edilmediğini döndürür. */
+  async isTodaySubmitted(userId: string): Promise<boolean> {
+    const today = todayString();
+    const checklist = await this.repo.findOne({ where: { userId, date: today } });
+    return checklist?.submitted ?? false;
   }
 
   /**

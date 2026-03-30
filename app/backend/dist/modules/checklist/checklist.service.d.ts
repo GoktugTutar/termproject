@@ -22,5 +22,6 @@ export declare class ChecklistService {
     }>;
     submit(userId: string, dto: SubmitChecklistDto): Promise<ChecklistEntity>;
     getWeekChecklists(userId: string): Promise<ChecklistEntity[]>;
+    isTodaySubmitted(userId: string): Promise<boolean>;
     getEarlyCompletedIds(userId: string): Promise<string[]>;
 }

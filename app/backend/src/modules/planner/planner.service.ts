@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ScheduleEntity } from './schedule.entity.js';
@@ -6,12 +6,12 @@ import { HeuristicService, HeuristicResult } from '../heuristic/heuristic.servic
 import { LessonService } from '../lesson/lesson.service.js';
 import { UserService } from '../user/user.service.js';
 import { ChecklistService } from '../checklist/checklist.service.js';
-import { BusyTimeMap } from '../user/user.model.js';
-import { isMonday, formatTimeRange } from '../../common/utils/date.utils.js';
+import type { BusyTimeMap } from '../user/user.model.js';
+import { getDayName, formatTimeRange, todayString } from '../../common/utils/date.utils.js';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const WORK_START = 8;
-const WORK_END = 22; // 14 available hours per day
+const WORK_END = 22;
 const MAX_HOURS_PER_LESSON_PER_DAY = 3;
 
 @Injectable()
@@ -27,12 +27,41 @@ export class PlannerService {
 
   /**
    * POST /planner/create
-   * Called at end of day. Recalculates the weekly schedule:
-   *  1. Ranks lessons by H score.
-   *  2. Distributes X hours per lesson across the week respecting busy times.
-   *  3. Removes future slots for lessons finished early.
+   *
+   * İki senaryo:
+   *
+   * 1) Bu hafta için schedule YOK → tam hafta oluştur (haftanın ilk çağrısı)
+   *    - Checklist geçmişi olmadığı için R = X (hepsi yapılmamış sayılır)
+   *    - Tüm günler (pazartesi→pazar) doldurulur
+   *
+   * 2) Bu hafta için schedule VAR → sadece kalan günleri güncelle (gün sonu çağrısı)
+   *    - Bugün ve önceki günler olduğu gibi korunur
+   *    - Erken biten dersler kalan günlerden kaldırılır
+   *    - Kalan dersler R skoruna göre yeniden sıralanıp kalan günlere dağıtılır
    */
   async create(userId: string): Promise<ScheduleEntity | null> {
+    const { startDate, endDate } = this.currentWeekRange();
+    const today = todayString();
+    const dayName = getDayName();
+
+    // Bu hafta için schedule var mı? → senaryo belirleme
+    const existing = await this.scheduleRepo.findOne({ where: { userId, startDate } });
+
+    // ── Aynı gün tekrar çağrıldıysa hesaplama yapma, mevcut programı döndür ──
+    if (existing?.lastUpdatedDate === today) {
+      return existing;
+    }
+
+    // ── Pzt–Cmt: bugünün checklistini doldurmadan program güncellenemesin ─────
+    if (dayName !== 'sunday') {
+      const submitted = await this.checklistService.isTodaySubmitted(userId);
+      if (!submitted) {
+        throw new BadRequestException(
+          'Programı güncellemek için önce bugünün checklistini doldurmanız gerekiyor.',
+        );
+      }
+    }
+
     const [user, lessons, weekChecklists, earlyIds] = await Promise.all([
       this.userService.findById(userId),
       this.lessonService.findByUserId(userId),
@@ -42,60 +71,132 @@ export class PlannerService {
 
     if (!user) return null;
 
-    const firstDay = isMonday();
-    const ranked = this.heuristicService.rankLessons(lessons, user, weekChecklists, firstDay);
+    // isFirstCall: bu hafta henüz schedule oluşturulmamış (Pazar akşamı ilk çağrı)
+    const isFirstCall = !existing;
 
-    // Only schedule lessons not yet fully completed early
+    const ranked = this.heuristicService.rankLessons(
+      lessons,
+      user,
+      weekChecklists,
+      isFirstCall, // true → R = X (checklist yok), false → R = X - tamamlanan
+    );
+
+    // Erken biten dersleri çıkar
     const activeLessons = ranked.filter((r) => !earlyIds.includes(r.lessonId));
 
-    const schedule = this.buildWeeklySchedule(activeLessons, user.busyTimes ?? {});
-
-    // Persist: upsert schedule for the current week
-    const { startDate, endDate } = this.currentWeekRange();
-    const existing = await this.scheduleRepo.findOne({ where: { userId, startDate } });
-
-    if (existing) {
-      existing.schedule = schedule;
-      existing.endDate = endDate;
-      return this.scheduleRepo.save(existing);
+    // ── SENARYO 1: Pazar akşamı → gelecek hafta için tam program ──────────────
+    if (isFirstCall) {
+      const schedule = this.buildFullWeek(activeLessons, user.busyTimes ?? {});
+      const entity = this.scheduleRepo.create({
+        userId, startDate, endDate, schedule, lastUpdatedDate: today,
+      });
+      return this.scheduleRepo.save(entity);
     }
 
-    const entity = this.scheduleRepo.create({ userId, startDate, endDate, schedule });
-    return this.scheduleRepo.save(entity);
+    // ── SENARYO 2: Gün sonu (Pzt–Cmt) → sadece kalan günleri güncelle ─────────
+    existing.schedule = this.updateFutureDays(
+      existing.schedule,
+      activeLessons,
+      user.busyTimes ?? {},
+    );
+    existing.lastUpdatedDate = today;
+    return this.scheduleRepo.save(existing);
   }
 
   /**
    * GET /planner/schedule
-   * Returns the most recent schedule for the user.
+   * Bu hafta için schedule var mı kontrol eder.
+   * - Varsa  → direkt döndürür
+   * - Yoksa  → 404 fırlatır (önce checklist doldurulmalı)
    */
-  async getSchedule(userId: string): Promise<ScheduleEntity | null> {
-    return this.scheduleRepo.findOne({
-      where: { userId },
-      order: { startDate: 'DESC' },
-    });
+  async getSchedule(userId: string): Promise<ScheduleEntity> {
+    const { startDate } = this.currentWeekRange();
+    const schedule = await this.scheduleRepo.findOne({ where: { userId, startDate } });
+
+    if (!schedule) {
+      throw new NotFoundException(
+        'Bu hafta için program bulunamadı. Lütfen önce günlük checklistinizi doldurun.',
+      );
+    }
+
+    return schedule;
   }
 
-  // ---------------------------------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PRIVATE HELPERS
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  private buildWeeklySchedule(
+  /**
+   * Tüm haftayı sıfırdan oluşturur (pazartesi → pazar).
+   * Her ders için haftalık X saati günlere dağıtır.
+   */
+  private buildFullWeek(
     ranked: HeuristicResult[],
     busyTimes: BusyTimeMap,
   ): Record<string, Record<string, string>> {
-    // remaining weekly hours per lesson
-    const remaining = new Map(ranked.map((r) => [r.lessonId, Math.max(1, Math.ceil(r.X))]));
+    // X: her ders için bu hafta verilecek toplam saat
+    const remaining = new Map(
+      ranked.map((r) => [r.lessonId, Math.max(1, Math.ceil(r.X))]),
+    );
+    return this.fillDays(DAYS, ranked, remaining, busyTimes);
+  }
 
+  /**
+   * Bugünü ve geçmiş günleri korur, yarından itibaren kalan günleri yeniden doldurur.
+   * Her ders için R (kalan saat) kullanılır — tamamlanan saatler düşülmüş olur.
+   */
+  private updateFutureDays(
+    existingSchedule: Record<string, Record<string, string>>,
+    ranked: HeuristicResult[],
+    busyTimes: BusyTimeMap,
+  ): Record<string, Record<string, string>> {
+    const todayIndex = DAYS.indexOf(getDayName());
+
+    // Bugün ve önceki günleri olduğu gibi taşı
+    const newSchedule: Record<string, Record<string, string>> = {};
+    for (let i = 0; i <= todayIndex; i++) {
+      newSchedule[DAYS[i]] = existingSchedule[DAYS[i]] ?? {};
+    }
+
+    // Kalan günler için: R saatini kullan (checklist'ten düşülmüş gerçek kalan)
+    const futureDays = DAYS.slice(todayIndex + 1);
+
+    if (futureDays.length === 0) return newSchedule; // hafta bitti
+
+    const remaining = new Map(
+      ranked.map((r) => [r.lessonId, Math.max(0, Math.ceil(r.R))]),
+    );
+
+    const filledFuture = this.fillDays(futureDays, ranked, remaining, busyTimes);
+    for (const day of futureDays) {
+      newSchedule[day] = filledFuture[day];
+    }
+
+    return newSchedule;
+  }
+
+  /**
+   * Verilen günleri H sıralamasına göre derslerle doldurur.
+   * Her ders için kalan saat `remaining` map'inden okunur.
+   */
+  private fillDays(
+    days: string[],
+    ranked: HeuristicResult[],
+    remaining: Map<string, number>,
+    busyTimes: BusyTimeMap,
+  ): Record<string, Record<string, string>> {
     const schedule: Record<string, Record<string, string>> = {};
 
-    for (const day of DAYS) {
+    for (const day of days) {
       schedule[day] = {};
 
-      // Embed busy times in schedule
       const busyDay = busyTimes[day] ?? {};
+
+      // Meşgul saatleri programa göm
       for (const [range, label] of Object.entries(busyDay)) {
         schedule[day][range] = `busy:${label}`;
       }
 
-      // Collect free hours (sorted)
       const busyHours = this.expandBusyHours(busyDay);
       const freeHours: number[] = [];
       for (let h = WORK_START; h < WORK_END; h++) {
@@ -104,21 +205,19 @@ export class PlannerService {
 
       let slotPtr = 0;
 
+      // H sıralamasına göre (en öncelikliden başla) dersleri yerleştir
       for (const { lessonId } of ranked) {
         const rem = remaining.get(lessonId) ?? 0;
         if (rem <= 0 || slotPtr >= freeHours.length) continue;
 
-        const todayHours = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY);
-        const available = freeHours.length - slotPtr;
-        const assign = Math.min(todayHours, available);
+        const assign = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY, freeHours.length - slotPtr);
+        if (assign <= 0) continue;
 
-        if (assign > 0) {
-          const start = freeHours[slotPtr];
-          const end = freeHours[slotPtr + assign - 1] + 1;
-          schedule[day][formatTimeRange(start, end)] = lessonId;
-          remaining.set(lessonId, rem - assign);
-          slotPtr += assign;
-        }
+        const start = freeHours[slotPtr];
+        const end = freeHours[slotPtr + assign - 1] + 1;
+        schedule[day][formatTimeRange(start, end)] = lessonId;
+        remaining.set(lessonId, rem - assign);
+        slotPtr += assign;
       }
     }
 
@@ -137,7 +236,10 @@ export class PlannerService {
   private currentWeekRange(): { startDate: string; endDate: string } {
     const now = new Date();
     const day = now.getDay();
-    const diffToMon = day === 0 ? -6 : 1 - day;
+
+    // Pazar (0) → gelecek haftanın Pazartesi'si (+1)
+    // Pazartesi–Cumartesi → bu haftanın Pazartesi'si
+    const diffToMon = day === 0 ? 1 : 1 - day;
 
     const monday = new Date(now);
     monday.setDate(now.getDate() + diffToMon);
