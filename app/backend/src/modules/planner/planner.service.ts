@@ -85,16 +85,40 @@ export class PlannerService {
     // Erken biten dersleri çıkar
     const activeLessons = ranked.filter((r) => !earlyIds.includes(r.lessonId));
 
-    // ── SENARYO 1: Pazar akşamı → gelecek hafta için tam program ──────────────
+    // ── SENARYO 1 & 2: İlk çağrı → tam hafta veya haftanın ortasından başla ──
     if (isFirstCall) {
-      const schedule = this.buildFullWeek(activeLessons, user.busyTimes ?? {});
+      const todayIndex = DAYS.indexOf(dayName);
+      const isPartialWeek = todayIndex > 0; // Pazartesi'den sonra kayıt olundu
+      let schedule: Record<string, Record<string, string>>;
+ 
+      if (isPartialWeek) {
+        // Sadece bugünden itibaren doldur, geçmiş günler boş kalır
+        const futureDays = DAYS.slice(todayIndex);
+        const weekFraction = futureDays.length / DAYS.length;
+        const remaining = new Map(
+          activeLessons.map((r) => [r.lessonId, Math.max(1, Math.ceil(r.X * weekFraction))]),
+        );
+        const filled = this.fillDays(futureDays, activeLessons, remaining, user.busyTimes ?? {});
+ 
+        schedule = {};
+        for (let i = 0; i < todayIndex; i++) {
+          schedule[DAYS[i]] = {}; // geçmiş günler boş
+        }
+        for (const day of futureDays) {
+          schedule[day] = filled[day];
+        }
+      } else {
+        // Pazartesi → tam hafta oluştur
+        schedule = this.buildFullWeek(activeLessons, user.busyTimes ?? {});
+      }
+ 
       const entity = this.scheduleRepo.create({
         userId, startDate, endDate, schedule, lastUpdatedDate: today,
       });
       return this.scheduleRepo.save(entity);
     }
 
-    // ── SENARYO 2: Gün sonu (Pzt–Cmt) → sadece kalan günleri güncelle ─────────
+    // ── SENARYO 3: Gün sonu (Pzt–Cmt) → sadece kalan günleri güncelle ─────────
     existing.schedule = this.updateFutureDays(
       existing.schedule,
       activeLessons,
