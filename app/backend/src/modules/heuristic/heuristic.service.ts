@@ -17,6 +17,7 @@ export interface HeuristicResult {
   H: number;  // priority score (higher = more urgent)
   U: number;  // days until next exam
   R: number;  // remaining hours needed this week
+  R_hours: number; // raw remaining HOURS,         X - completed         → used by planner
   X: number;  // total weekly hours allocated
   D: number;  // difficulty
   S: number;  // stress level
@@ -68,19 +69,22 @@ export class HeuristicService {
     allLessons: LessonEntity[],
     weekChecklists: ChecklistEntity[],
     isFirstDay: boolean,
-  ): number {
+  ): { R: number; R_hours: number } {
     const X = this.calculateX(lesson, allLessons);
-    if (isFirstDay || weekChecklists.length === 0) return 1;
-
+    if (X === 0) return { R: 0, R_hours: 0 };
+    if (isFirstDay || weekChecklists.length === 0) return { R: 1, R_hours: X };
+ 
     const completed = weekChecklists.reduce((sum, checklist) => {
       const entry = checklist.lessons.find((l) => l.lessonId === lesson.id);
       if (!entry || entry.hoursCompleted === null) return sum;
-      // Infinity encoded as 9999 in DB; treat as full X
+      // 9999 in DB = lesson fully done early
       if (entry.hoursCompleted >= 9999) return sum + X;
       return sum + Math.max(0, entry.hoursCompleted);
     }, 0);
-
-    return Math.max(0, (X - completed) / X);
+ 
+    const R_hours = Math.max(0, X - completed);
+    const R       = R_hours / X;
+    return { R, R_hours };
   }
 
   /**
@@ -124,15 +128,15 @@ export class HeuristicService {
     weekChecklists: ChecklistEntity[],
     isFirstDay: boolean,
   ): HeuristicResult {
-    const X = this.calculateX(lesson, allLessons);
-    const U = this.calculateU(lesson);
-    const R = this.calculateR(lesson, allLessons, weekChecklists, isFirstDay);
-    const D = this.normalizeD(lesson.difficulty);
-    const S = this.normalizeS(user.stressLevel ?? 1);
-    const B = this.normalizeB(lesson.delayCount);
-    const H = this.calculateH(U, R, D, S, B);
-
-    return { lessonId: lesson.id, lessonName: lesson.name, H, U, R, X, D, S, B };
+    const X              = this.calculateX(lesson, allLessons);
+    const U              = this.calculateU(lesson);
+    const { R, R_hours } = this.calculateR(lesson, allLessons, weekChecklists, isFirstDay);
+    const D              = this.normalizeD(lesson.difficulty);
+    const S              = this.normalizeS(user.stressLevel ?? 1);
+    const B              = this.normalizeB(lesson.delayCount);
+    const H              = this.calculateH(U, R, D, S, B);
+ 
+    return { lessonId: lesson.id, lessonName: lesson.name, H, U, R, R_hours, X, D, S, B };
   }
 
   /**
