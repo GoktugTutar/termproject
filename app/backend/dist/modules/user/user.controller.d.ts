@@ -4,6 +4,7 @@ import { UserEntity } from './user.entity.js';
 export declare class UserController {
     private readonly userService;
     constructor(userService: UserService);
-    updateProfile(user: UserEntity, dto: UpdateUserProfileDto): Promise<UserEntity>;
+    me(user: UserEntity): Promise<import("./user.service.js").PublicUser>;
+    updateProfile(user: UserEntity, dto: UpdateUserProfileDto): Promise<import("./user.service.js").PublicUser>;
     delete(user: UserEntity): Promise<void>;
 }

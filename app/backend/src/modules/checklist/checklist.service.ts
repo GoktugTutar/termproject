@@ -36,7 +36,9 @@ export class ChecklistService {
 
     const today = todayString();
 
-    const existing = await this.repo.findOne({ where: { userId, date: today } });
+    const existing = await this.repo.findOne({
+      where: { userId, date: today },
+    });
     if (existing) return existing;
 
     const schedule = await this.scheduleRepo.findOne({
@@ -45,7 +47,9 @@ export class ChecklistService {
     });
 
     if (!schedule) {
-      throw new NotFoundException('No schedule found. Run /planner/create first.');
+      throw new NotFoundException(
+        'No schedule found. Run /planner/create first.',
+      );
     }
 
     const dayName = getDayName();
@@ -59,13 +63,26 @@ export class ChecklistService {
       hoursMap.set(value, (hoursMap.get(value) ?? 0) + (e - s));
     }
 
-    const lessons = [...hoursMap.entries()].map(([lessonId, allocatedHours]) => ({
-      lessonId,
-      allocatedHours,
-      hoursCompleted: null,
-    }));
+    const lessons = [...hoursMap.entries()].map(
+      ([lessonId, allocatedHours]) => ({
+        lessonId,
+        allocatedHours,
+        hoursCompleted: null,
+      }),
+    );
 
-    const checklist = this.repo.create({ userId, date: today, lessons, submitted: false });
+    if (lessons.length === 0) {
+      throw new BadRequestException(
+        'Bugun icin planlanmis calisma bulunmuyor. Kontrol listesi olusturulamaz.',
+      );
+    }
+
+    const checklist = this.repo.create({
+      userId,
+      date: today,
+      lessons,
+      submitted: false,
+    });
     return this.repo.save(checklist);
   }
 
@@ -75,7 +92,9 @@ export class ChecklistService {
    */
   async getTodayChecklist(userId: string) {
     const today = todayString();
-    const checklist = await this.repo.findOne({ where: { userId, date: today } });
+    const checklist = await this.repo.findOne({
+      where: { userId, date: today },
+    });
     if (!checklist) throw new NotFoundException('No checklist for today');
 
     return {
@@ -100,27 +119,41 @@ export class ChecklistService {
    * Persists completion data, increments delay for unfinished lessons,
    * and marks early-completed lessons (9999) so planner can drop their future slots.
    */
-  async submit(userId: string, dto: SubmitChecklistDto): Promise<ChecklistEntity> {
+  async submit(
+    userId: string,
+    dto: SubmitChecklistDto,
+  ): Promise<ChecklistEntity> {
     const today = todayString();
-    const checklist = await this.repo.findOne({ where: { userId, date: today } });
+    const checklist = await this.repo.findOne({
+      where: { userId, date: today },
+    });
     if (!checklist) throw new NotFoundException('No checklist for today');
     if (checklist.submitted) throw new BadRequestException('Already submitted');
 
     // Map incoming data
-    const submissionMap = new Map(dto.lessons.map((l) => [l.lessonId, l.hoursCompleted]));
+    const submissionMap = new Map(
+      dto.lessons.map((l) => [l.lessonId, l.hoursCompleted]),
+    );
 
     for (const entry of checklist.lessons) {
       const hours = submissionMap.get(entry.lessonId);
       if (hours === undefined) continue;
+      const previousHours = entry.hoursCompleted;
       entry.hoursCompleted = hours;
 
       const isDelay = hours < 0 || hours === -9999;
-      if (isDelay) {
+      const wasDelay =
+        previousHours !== null &&
+        (previousHours < 0 || previousHours === -9999);
+
+      if (isDelay && !wasDelay) {
         await this.lessonService.incrementDelay(entry.lessonId);
       }
     }
 
-    checklist.submitted = true;
+    checklist.submitted = checklist.lessons.every(
+      (lesson) => lesson.hoursCompleted !== null,
+    );
     return this.repo.save(checklist);
   }
 
@@ -130,7 +163,7 @@ export class ChecklistService {
   async getWeekChecklists(userId: string): Promise<ChecklistEntity[]> {
     const now = new Date();
     const day = now.getDay(); // 0=Sun, 1=Mon...
-    const diffToMon = (day === 0 ? -6 : 1 - day);
+    const diffToMon = day === 0 ? -6 : 1 - day;
     const monday = new Date(now);
     monday.setDate(now.getDate() + diffToMon);
     monday.setHours(0, 0, 0, 0);
@@ -152,7 +185,9 @@ export class ChecklistService {
   /** Bugünün checklistinin submit edilip edilmediğini döndürür. */
   async isTodaySubmitted(userId: string): Promise<boolean> {
     const today = todayString();
-    const checklist = await this.repo.findOne({ where: { userId, date: today } });
+    const checklist = await this.repo.findOne({
+      where: { userId, date: today },
+    });
     return checklist?.submitted ?? false;
   }
 

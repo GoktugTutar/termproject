@@ -24,14 +24,27 @@ let LessonController = class LessonController {
     constructor(lessonService) {
         this.lessonService = lessonService;
     }
+    get(user) {
+        return this.lessonService.findByUserId(user.id);
+    }
     register(user, dtos) {
         return this.lessonService.registerMany(user.id, dtos);
     }
     update(user, name, dto) {
         return this.lessonService.update(user.id, name, dto);
     }
+    delete(user, id) {
+        return this.lessonService.delete(user.id, id);
+    }
 };
 exports.LessonController = LessonController;
+__decorate([
+    (0, common_1.Get)(),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity]),
+    __metadata("design:returntype", void 0)
+], LessonController.prototype, "get", null);
 __decorate([
     (0, common_1.Post)('register'),
     __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
@@ -49,6 +62,15 @@ __decorate([
     __metadata("design:paramtypes", [user_entity_js_1.UserEntity, String, update_lesson_dto_js_1.UpdateLessonDto]),
     __metadata("design:returntype", void 0)
 ], LessonController.prototype, "update", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    (0, common_1.HttpCode)(204),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity, String]),
+    __metadata("design:returntype", void 0)
+], LessonController.prototype, "delete", null);
 exports.LessonController = LessonController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard),
     (0, common_1.Controller)('lesson'),

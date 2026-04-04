@@ -39,7 +39,9 @@ let LessonService = class LessonService {
         return this.repo.save(entities);
     }
     async update(userId, lessonName, dto) {
-        const lesson = await this.repo.findOne({ where: { userId, name: lessonName } });
+        const lesson = await this.repo.findOne({
+            where: { userId, name: lessonName },
+        });
         if (!lesson)
             throw new common_1.NotFoundException(`Lesson "${lessonName}" not found`);
         if (dto.vizeDate)
@@ -58,6 +60,12 @@ let LessonService = class LessonService {
     }
     async incrementDelay(lessonId) {
         await this.repo.increment({ id: lessonId }, 'delayCount', 1);
+    }
+    async delete(userId, lessonId) {
+        const lesson = await this.repo.findOne({ where: { id: lessonId, userId } });
+        if (!lesson)
+            throw new common_1.NotFoundException(`Lesson "${lessonId}" not found`);
+        await this.repo.remove(lesson);
     }
 };
 exports.LessonService = LessonService;

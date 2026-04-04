@@ -34,7 +34,9 @@ let ChecklistService = class ChecklistService {
             throw new common_1.BadRequestException('Pazar günü checklist oluşturulmaz. Yeni haftanın programını oluşturmak için /planner/create kullanın.');
         }
         const today = (0, date_utils_js_1.todayString)();
-        const existing = await this.repo.findOne({ where: { userId, date: today } });
+        const existing = await this.repo.findOne({
+            where: { userId, date: today },
+        });
         if (existing)
             return existing;
         const schedule = await this.scheduleRepo.findOne({
@@ -58,12 +60,22 @@ let ChecklistService = class ChecklistService {
             allocatedHours,
             hoursCompleted: null,
         }));
-        const checklist = this.repo.create({ userId, date: today, lessons, submitted: false });
+        if (lessons.length === 0) {
+            throw new common_1.BadRequestException('Bugun icin planlanmis calisma bulunmuyor. Kontrol listesi olusturulamaz.');
+        }
+        const checklist = this.repo.create({
+            userId,
+            date: today,
+            lessons,
+            submitted: false,
+        });
         return this.repo.save(checklist);
     }
     async getTodayChecklist(userId) {
         const today = (0, date_utils_js_1.todayString)();
-        const checklist = await this.repo.findOne({ where: { userId, date: today } });
+        const checklist = await this.repo.findOne({
+            where: { userId, date: today },
+        });
         if (!checklist)
             throw new common_1.NotFoundException('No checklist for today');
         return {
@@ -82,7 +94,9 @@ let ChecklistService = class ChecklistService {
     }
     async submit(userId, dto) {
         const today = (0, date_utils_js_1.todayString)();
-        const checklist = await this.repo.findOne({ where: { userId, date: today } });
+        const checklist = await this.repo.findOne({
+            where: { userId, date: today },
+        });
         if (!checklist)
             throw new common_1.NotFoundException('No checklist for today');
         if (checklist.submitted)
@@ -92,19 +106,22 @@ let ChecklistService = class ChecklistService {
             const hours = submissionMap.get(entry.lessonId);
             if (hours === undefined)
                 continue;
+            const previousHours = entry.hoursCompleted;
             entry.hoursCompleted = hours;
             const isDelay = hours < 0 || hours === -9999;
-            if (isDelay) {
+            const wasDelay = previousHours !== null &&
+                (previousHours < 0 || previousHours === -9999);
+            if (isDelay && !wasDelay) {
                 await this.lessonService.incrementDelay(entry.lessonId);
             }
         }
-        checklist.submitted = true;
+        checklist.submitted = checklist.lessons.every((lesson) => lesson.hoursCompleted !== null);
         return this.repo.save(checklist);
     }
     async getWeekChecklists(userId) {
         const now = new Date();
         const day = now.getDay();
-        const diffToMon = (day === 0 ? -6 : 1 - day);
+        const diffToMon = day === 0 ? -6 : 1 - day;
         const monday = new Date(now);
         monday.setDate(now.getDate() + diffToMon);
         monday.setHours(0, 0, 0, 0);
@@ -119,7 +136,9 @@ let ChecklistService = class ChecklistService {
     }
     async isTodaySubmitted(userId) {
         const today = (0, date_utils_js_1.todayString)();
-        const checklist = await this.repo.findOne({ where: { userId, date: today } });
+        const checklist = await this.repo.findOne({
+            where: { userId, date: today },
+        });
         return checklist?.submitted ?? false;
     }
     async getEarlyCompletedIds(userId) {

@@ -7,6 +7,8 @@ import { LessonEntity } from '../lesson/lesson.entity.js';
 import { ChecklistEntity } from '../checklist/checklist.entity.js';
 import { ScheduleEntity } from '../planner/schedule.entity.js';
 
+export type PublicUser = Omit<UserEntity, 'password'>;
+
 @Injectable()
 export class UserService {
   constructor(
@@ -33,11 +35,20 @@ export class UserService {
     return this.repo.findOne({ where: { email } });
   }
 
-  async updateProfile(id: string, dto: UpdateUserProfileDto): Promise<UserEntity> {
+  async updateProfile(
+    id: string,
+    dto: UpdateUserProfileDto,
+  ): Promise<UserEntity> {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
     Object.assign(user, dto);
     return this.repo.save(user);
+  }
+
+  async getProfile(id: string): Promise<PublicUser> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+    return this.toPublic(user);
   }
 
   async delete(id: string): Promise<void> {
@@ -47,5 +58,10 @@ export class UserService {
     await this.checklistRepo.delete({ userId: id });
     await this.scheduleRepo.delete({ userId: id });
     await this.repo.remove(user);
+  }
+
+  toPublic(user: UserEntity): PublicUser {
+    const { password: _password, ...publicUser } = user;
+    return publicUser;
   }
 }

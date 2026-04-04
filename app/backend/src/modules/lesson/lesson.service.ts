@@ -12,7 +12,10 @@ export class LessonService {
     private readonly repo: Repository<LessonEntity>,
   ) {}
 
-  async registerMany(userId: string, dtos: CreateLessonDto[]): Promise<LessonEntity[]> {
+  async registerMany(
+    userId: string,
+    dtos: CreateLessonDto[],
+  ): Promise<LessonEntity[]> {
     const entities = dtos.map((dto) => {
       const entity = this.repo.create();
       entity.userId = userId;
@@ -29,9 +32,16 @@ export class LessonService {
     return this.repo.save(entities);
   }
 
-  async update(userId: string, lessonName: string, dto: UpdateLessonDto): Promise<LessonEntity> {
-    const lesson = await this.repo.findOne({ where: { userId, name: lessonName } });
-    if (!lesson) throw new NotFoundException(`Lesson "${lessonName}" not found`);
+  async update(
+    userId: string,
+    lessonName: string,
+    dto: UpdateLessonDto,
+  ): Promise<LessonEntity> {
+    const lesson = await this.repo.findOne({
+      where: { userId, name: lessonName },
+    });
+    if (!lesson)
+      throw new NotFoundException(`Lesson "${lessonName}" not found`);
 
     if (dto.vizeDate) lesson.vizeDate = new Date(dto.vizeDate);
     if (dto.finalDate) lesson.finalDate = new Date(dto.finalDate);
@@ -52,5 +62,11 @@ export class LessonService {
 
   async incrementDelay(lessonId: string): Promise<void> {
     await this.repo.increment({ id: lessonId }, 'delayCount', 1);
+  }
+
+  async delete(userId: string, lessonId: string): Promise<void> {
+    const lesson = await this.repo.findOne({ where: { id: lessonId, userId } });
+    if (!lesson) throw new NotFoundException(`Lesson "${lessonId}" not found`);
+    await this.repo.remove(lesson);
   }
 }

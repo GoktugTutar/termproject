@@ -1,4 +1,14 @@
-import { Controller, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { LessonService } from './lesson.service.js';
@@ -11,12 +21,14 @@ import { UserEntity } from '../user/user.entity.js';
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}
 
+  @Get()
+  get(@CurrentUser() user: UserEntity) {
+    return this.lessonService.findByUserId(user.id);
+  }
+
   // POST /lesson/register — body: CreateLessonDto[]
   @Post('register')
-  register(
-    @CurrentUser() user: UserEntity,
-    @Body() dtos: CreateLessonDto[],
-  ) {
+  register(@CurrentUser() user: UserEntity, @Body() dtos: CreateLessonDto[]) {
     return this.lessonService.registerMany(user.id, dtos);
   }
 
@@ -28,5 +40,11 @@ export class LessonController {
     @Body() dto: UpdateLessonDto,
   ) {
     return this.lessonService.update(user.id, name, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  delete(@CurrentUser() user: UserEntity, @Param('id') id: string) {
+    return this.lessonService.delete(user.id, id);
   }
 }

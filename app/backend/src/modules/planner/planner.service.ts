@@ -13,6 +13,8 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 const WORK_START = 8;
 const WORK_END = 22;
 const MAX_HOURS_PER_LESSON_PER_DAY = 3;
+const MAX_LESSON_BLOCKS_FREE_DAY = 3;
+const MAX_LESSON_BLOCKS_BUSY_DAY = 2;
 
 @Injectable()
 export class PlannerService {
@@ -192,44 +194,115 @@ export class PlannerService {
       schedule[day] = {};
 
       const busyDay = busyTimes[day] ?? {};
+      const busyEntries = this.normalizeBusyEntries(busyDay);
 
       // Meşgul saatleri programa göm
-      for (const [range, label] of Object.entries(busyDay)) {
-        schedule[day][range] = `busy:${label}`;
+      for (const busyEntry of busyEntries) {
+        schedule[day][formatTimeRange(busyEntry.start, busyEntry.end)] =
+          `busy:${busyEntry.label}`;
       }
 
-      const busyHours = this.expandBusyHours(busyDay);
-      const freeHours: number[] = [];
-      for (let h = WORK_START; h < WORK_END; h++) {
-        if (!busyHours.has(h)) freeHours.push(h);
-      }
-
-      let slotPtr = 0;
+      const freeRanges = this.buildFreeRanges(busyEntries);
+      const maxLessonBlocks = busyEntries.length > 0
+        ? MAX_LESSON_BLOCKS_BUSY_DAY
+        : MAX_LESSON_BLOCKS_FREE_DAY;
+      let freeRangeIndex = 0;
+      let lessonBlocksPlaced = 0;
 
       // H sıralamasına göre (en öncelikliden başla) dersleri yerleştir
       for (const { lessonId } of ranked) {
-        const rem = remaining.get(lessonId) ?? 0;
-        if (rem <= 0 || slotPtr >= freeHours.length) continue;
+        if (
+          freeRangeIndex >= freeRanges.length ||
+          lessonBlocksPlaced >= maxLessonBlocks
+        ) {
+          break;
+        }
 
-        const assign = Math.min(rem, MAX_HOURS_PER_LESSON_PER_DAY, freeHours.length - slotPtr);
+        const rem = remaining.get(lessonId) ?? 0;
+        if (rem <= 0) continue;
+
+        const currentRange = freeRanges[freeRangeIndex];
+        const availableHours = currentRange.end - currentRange.start;
+        if (availableHours <= 0) {
+          freeRangeIndex++;
+          continue;
+        }
+
+        const assign = Math.min(
+          rem,
+          MAX_HOURS_PER_LESSON_PER_DAY,
+          availableHours,
+        );
         if (assign <= 0) continue;
 
-        const start = freeHours[slotPtr];
-        const end = freeHours[slotPtr + assign - 1] + 1;
+        const start = currentRange.start;
+        const end = start + assign;
         schedule[day][formatTimeRange(start, end)] = lessonId;
         remaining.set(lessonId, rem - assign);
-        slotPtr += assign;
+        currentRange.start += assign;
+        lessonBlocksPlaced++;
+
+        if (currentRange.start >= currentRange.end) {
+          freeRangeIndex++;
+        }
       }
     }
 
     return schedule;
   }
 
-  private expandBusyHours(busyDay: Record<string, string>): Set<number> {
+  private normalizeBusyEntries(
+    busyDay: Record<string, string>,
+  ): Array<{ start: number; end: number; label: string }> {
+    return Object.entries(busyDay)
+      .map(([range, label]) => {
+        const [rawStart, rawEnd] = range.split('-').map(Number);
+        const start = Math.max(WORK_START, rawStart);
+        const end = Math.min(WORK_END, rawEnd);
+        return {
+          start,
+          end,
+          label: label?.trim() || 'Mesgul',
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.start)
+        && Number.isFinite(entry.end)
+        && entry.end > entry.start)
+      .sort((a, b) => a.start - b.start);
+  }
+
+  private buildFreeRanges(
+    busyEntries: Array<{ start: number; end: number }>,
+  ): Array<{ start: number; end: number }> {
+    const busyHours = this.expandBusyHours(busyEntries);
+    const ranges: Array<{ start: number; end: number }> = [];
+
+    let rangeStart: number | null = null;
+    for (let hour = WORK_START; hour < WORK_END; hour++) {
+      if (!busyHours.has(hour)) {
+        rangeStart ??= hour;
+        continue;
+      }
+
+      if (rangeStart !== null) {
+        ranges.push({ start: rangeStart, end: hour });
+        rangeStart = null;
+      }
+    }
+
+    if (rangeStart !== null) {
+      ranges.push({ start: rangeStart, end: WORK_END });
+    }
+
+    return ranges;
+  }
+
+  private expandBusyHours(
+    busyEntries: Array<{ start: number; end: number }>,
+  ): Set<number> {
     const hours = new Set<number>();
-    for (const range of Object.keys(busyDay)) {
-      const [s, e] = range.split('-').map(Number);
-      for (let h = s; h < e; h++) hours.add(h);
+    for (const entry of busyEntries) {
+      for (let h = entry.start; h < entry.end; h++) hours.add(h);
     }
     return hours;
   }

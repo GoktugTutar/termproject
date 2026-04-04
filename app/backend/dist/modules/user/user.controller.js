@@ -24,14 +24,26 @@ let UserController = class UserController {
     constructor(userService) {
         this.userService = userService;
     }
+    me(user) {
+        return this.userService.getProfile(user.id);
+    }
     updateProfile(user, dto) {
-        return this.userService.updateProfile(user.id, dto);
+        return this.userService
+            .updateProfile(user.id, dto)
+            .then((updated) => this.userService.toPublic(updated));
     }
     delete(user) {
         return this.userService.delete(user.id);
     }
 };
 exports.UserController = UserController;
+__decorate([
+    (0, common_1.Get)('me'),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [user_entity_js_1.UserEntity]),
+    __metadata("design:returntype", void 0)
+], UserController.prototype, "me", null);
 __decorate([
     (0, common_1.Put)('update'),
     __param(0, (0, current_user_decorator_js_1.CurrentUser)()),

@@ -16,6 +16,8 @@ export declare class PlannerService {
     private buildFullWeek;
     private updateFutureDays;
     private fillDays;
+    private normalizeBusyEntries;
+    private buildFreeRanges;
     private expandBusyHours;
     private currentWeekRange;
 }

@@ -4,6 +4,7 @@ import { UpdateUserProfileDto } from './dto/update-user-profile.dto.js';
 import { LessonEntity } from '../lesson/lesson.entity.js';
 import { ChecklistEntity } from '../checklist/checklist.entity.js';
 import { ScheduleEntity } from '../planner/schedule.entity.js';
+export type PublicUser = Omit<UserEntity, 'password'>;
 export declare class UserService {
     private readonly repo;
     private readonly lessonRepo;
@@ -17,5 +18,7 @@ export declare class UserService {
     findById(id: string): Promise<UserEntity | null>;
     findByEmail(email: string): Promise<UserEntity | null>;
     updateProfile(id: string, dto: UpdateUserProfileDto): Promise<UserEntity>;
+    getProfile(id: string): Promise<PublicUser>;
     delete(id: string): Promise<void>;
+    toPublic(user: UserEntity): PublicUser;
 }

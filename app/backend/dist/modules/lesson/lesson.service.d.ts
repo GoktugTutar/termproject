@@ -10,4 +10,5 @@ export declare class LessonService {
     findByUserId(userId: string): Promise<LessonEntity[]>;
     findById(id: string): Promise<LessonEntity | null>;
     incrementDelay(lessonId: string): Promise<void>;
+    delete(userId: string, lessonId: string): Promise<void>;
 }

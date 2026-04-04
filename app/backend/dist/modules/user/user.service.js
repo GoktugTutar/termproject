@@ -48,6 +48,12 @@ let UserService = class UserService {
         Object.assign(user, dto);
         return this.repo.save(user);
     }
+    async getProfile(id) {
+        const user = await this.findById(id);
+        if (!user)
+            throw new common_1.NotFoundException('User not found');
+        return this.toPublic(user);
+    }
     async delete(id) {
         const user = await this.findById(id);
         if (!user)
@@ -56,6 +62,10 @@ let UserService = class UserService {
         await this.checklistRepo.delete({ userId: id });
         await this.scheduleRepo.delete({ userId: id });
         await this.repo.remove(user);
+    }
+    toPublic(user) {
+        const { password: _password, ...publicUser } = user;
+        return publicUser;
     }
 };
 exports.UserService = UserService;
