@@ -167,7 +167,7 @@ export class PlannerService {
     if (futureDays.length === 0) return newSchedule; // hafta bitti
 
     const remaining = new Map(
-      ranked.map((r) => [r.lessonId, Math.max(0, Math.ceil(r.R))]),
+      ranked.map((r) => [r.lessonId, Math.max(0, Math.ceil(r.R_hours))]),
     );
 
     const filledFuture = this.fillDays(futureDays, ranked, remaining, busyTimes);

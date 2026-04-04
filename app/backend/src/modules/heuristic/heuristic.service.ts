@@ -4,11 +4,12 @@ import { UserEntity } from '../user/user.entity.js';
 import { ChecklistEntity } from '../checklist/checklist.entity.js';
 import { daysBetween } from '../../common/utils/date.utils.js';
 
-// Default weights for H = w1*U + w2*R + w3*D*S + w4*B
-const W1 = -0.5; // U: days until deadline (negative → fewer days = higher H)
-const W2 = 1.0;  // R: remaining hours needed
-const W3 = 0.3;  // D*S: difficulty × stress
-const W4 = 2.0;  // B: delay count penalty
+// All inputs are normalized to [0, 1] before weighting.
+// H = 0.35*U + 0.30*R + 0.20*(D*S) + 0.15*B
+const W1 = 0.35; // urgency       → most important, avoids missed deadlines
+const W2 = 0.30; // remaining     → prioritize lessons with more work left
+const W3  = 0.20; // difficulty × stress → combined cognitive load
+const W4 = 0.15; // delay penalty → least weight, don't overwhelm the student
 
 export interface HeuristicResult {
   lessonId: string;
@@ -16,6 +17,7 @@ export interface HeuristicResult {
   H: number;  // priority score (higher = more urgent)
   U: number;  // days until next exam
   R: number;  // remaining hours needed this week
+  R_hours: number; // raw remaining HOURS,         X - completed         → used by planner
   X: number;  // total weekly hours allocated
   D: number;  // difficulty
   S: number;  // stress level
@@ -34,42 +36,80 @@ export class HeuristicService {
     return (14 * lesson.difficulty) / totalD;
   }
 
-  /**
-   * U = days until next relevant exam.
+   /**
+   * U = 1 / (daysLeft + 1)         range: (0, 1]
+   * daysLeft = 0 (due tomorrow) → U = 1.0  (maximum urgency)
+   * daysLeft = 9                → U ≈ 0.1  (low urgency)
+   *
    * Uses vize date if it hasn't passed; otherwise uses final date.
    */
   calculateU(lesson: LessonEntity, now: Date = new Date()): number {
     const vize = lesson.vizeDate ? new Date(lesson.vizeDate) : null;
     const final = lesson.finalDate ? new Date(lesson.finalDate) : null;
 
-    if (vize && vize > now) return daysBetween(now, vize);
-    if (final && final > now) return daysBetween(now, final);
-    return 0; // both deadlines passed
+    let daysLeft: number;
+    if (vize && vize > now) {
+      daysLeft = daysBetween(now, vize);
+    } else if (final && final > now) {
+      daysLeft = daysBetween(now, final);
+    } else {
+      daysLeft = 0; // both deadlines passed → treat as maximum urgency
+    }
+ 
+    return 1 / (daysLeft + 1);
   }
 
   /**
-   * R = X - totalHoursCompletedThisWeek (from checklist history).
-   * On the first day (Monday / no checklist) R = X.
+   * R = (X - completedHours) / X   range: [0, 1]
+   * Represents what fraction of the planned weekly hours still remain.
+   * On the first call (no checklist yet) R = 1.0 (nothing completed).
    */
   calculateR(
     lesson: LessonEntity,
     allLessons: LessonEntity[],
     weekChecklists: ChecklistEntity[],
     isFirstDay: boolean,
-  ): number {
+  ): { R: number; R_hours: number } {
     const X = this.calculateX(lesson, allLessons);
-    if (isFirstDay || weekChecklists.length === 0) return X;
-
+    if (X === 0) return { R: 0, R_hours: 0 };
+    if (isFirstDay || weekChecklists.length === 0) return { R: 1, R_hours: X };
+ 
     const completed = weekChecklists.reduce((sum, checklist) => {
       const entry = checklist.lessons.find((l) => l.lessonId === lesson.id);
       if (!entry || entry.hoursCompleted === null) return sum;
-      // Infinity encoded as 9999 in DB; treat as full X
+      // 9999 in DB = lesson fully done early
       if (entry.hoursCompleted >= 9999) return sum + X;
       return sum + Math.max(0, entry.hoursCompleted);
     }, 0);
-
-    return Math.max(0, X - completed);
+ 
+    const R_hours = Math.max(0, X - completed);
+    const R       = R_hours / X;
+    return { R, R_hours };
   }
+
+  /**
+   * D = difficulty / 5             range: [0.2, 1.0]  (difficulty is 1–5)
+   */
+  normalizeD(difficulty: number): number {
+    return difficulty / 5;
+  }
+ 
+  /**
+   * S = stress / 10                range: [0.1, 1.0]  (stress is 1–10)
+   */
+  normalizeS(stress: number): number {
+    return stress / 10;
+  }
+ 
+  /**
+   * B = min(delayCount / 5, 1)     range: [0, 1]
+   * Delay is distinguishable up to 5; beyond that it's capped at 1
+   * so we don't overwhelm the student by over-penalizing.
+   */
+  normalizeB(delayCount: number): number {
+    return Math.min(delayCount / 5, 1);
+  }
+ 
 
   /**
    * H = w1*U + w2*R + w3*D*S + w4*B
@@ -88,15 +128,15 @@ export class HeuristicService {
     weekChecklists: ChecklistEntity[],
     isFirstDay: boolean,
   ): HeuristicResult {
-    const X = this.calculateX(lesson, allLessons);
-    const U = this.calculateU(lesson);
-    const R = this.calculateR(lesson, allLessons, weekChecklists, isFirstDay);
-    const D = lesson.difficulty;
-    const S = user.stressLevel ?? 1;
-    const B = lesson.delayCount;
-    const H = this.calculateH(U, R, D, S, B);
-
-    return { lessonId: lesson.id, lessonName: lesson.name, H, U, R, X, D, S, B };
+    const X              = this.calculateX(lesson, allLessons);
+    const U              = this.calculateU(lesson);
+    const { R, R_hours } = this.calculateR(lesson, allLessons, weekChecklists, isFirstDay);
+    const D              = this.normalizeD(lesson.difficulty);
+    const S              = this.normalizeS(user.stressLevel ?? 1);
+    const B              = this.normalizeB(lesson.delayCount);
+    const H              = this.calculateH(U, R, D, S, B);
+ 
+    return { lessonId: lesson.id, lessonName: lesson.name, H, U, R, R_hours, X, D, S, B };
   }
 
   /**
