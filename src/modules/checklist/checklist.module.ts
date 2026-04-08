@@ -1,16 +1,11 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { ChecklistEntity } from './checklist.entity.js';
-import { ChecklistService } from './checklist.service.js';
-import { ChecklistController } from './checklist.controller.js';
-import { LessonModule } from '../lesson/lesson.module.js';
-import { ScheduleEntity } from '../planner/schedule.entity.js';
+import { forwardRef, Module } from '@nestjs/common';
+import { ChecklistService } from './checklist.service';
+import { ChecklistController } from './checklist.controller';
+import { LessonModule } from '../lesson/lesson.module';
+import { PlannerModule } from '../planner/planner.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([ChecklistEntity, ScheduleEntity]),
-    LessonModule,
-  ],
+  imports: [LessonModule, forwardRef(() => PlannerModule)],
   providers: [ChecklistService],
   controllers: [ChecklistController],
   exports: [ChecklistService],

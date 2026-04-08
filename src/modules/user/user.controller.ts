@@ -1,17 +1,10 @@
 import {
-  Controller,
-  Get,
-  Put,
-  Delete,
-  Body,
-  UseGuards,
-  HttpCode,
+  Body, Controller, Delete, Get, HttpCode, Put, UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
-import { UserService } from './user.service.js';
-import { UpdateUserProfileDto } from './dto/update-user-profile.dto.js';
-import { UserEntity } from './user.entity.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { UserService } from './user.service';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('person')
@@ -19,23 +12,18 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get('me')
-  me(@CurrentUser() user: UserEntity) {
+  me(@CurrentUser() user: any) {
     return this.userService.getProfile(user.id);
   }
 
   @Put('update')
-  updateProfile(
-    @CurrentUser() user: UserEntity,
-    @Body() dto: UpdateUserProfileDto,
-  ) {
-    return this.userService
-      .updateProfile(user.id, dto)
-      .then((updated) => this.userService.toPublic(updated));
+  updateProfile(@CurrentUser() user: any, @Body() dto: UpdateUserProfileDto) {
+    return this.userService.updateProfile(user.id, dto);
   }
 
   @Delete('delete')
   @HttpCode(204)
-  delete(@CurrentUser() user: UserEntity) {
+  delete(@CurrentUser() user: any) {
     return this.userService.delete(user.id);
   }
 }

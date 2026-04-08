@@ -1,8 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from './app.module.js';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const morgan = require('morgan');
+import { AppModule } from './app.module';
+import * as morgan from 'morgan';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

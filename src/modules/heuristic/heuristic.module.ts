@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { HeuristicService } from './heuristic.service.js';
+import { HeuristicService } from './heuristic.service';
 
 @Module({
   providers: [HeuristicService],

@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique
+  password   String
+  name       String
+  semester   Int?
+  gpa        Float?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  busySlots       UserBusySlot[]
+  lessons         Lesson[]
+  weeklySchedules WeeklySchedule[]
+  dailyChecklists DailyChecklist[]
+  weeklyFeedbacks WeeklyFeedback[]
+
+  @@map("users")
+}
+
+model UserBusySlot {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  dayOfWeek String   @map("day_of_week")
+  startTime DateTime @map("start_time") @db.Time(6)
+  endTime   DateTime @map("end_time") @db.Time(6)
+  reason    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_busy_slots")
+}
+
+model Lesson {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  name                 String
+  credit               Float
+  difficulty           Float
+  semester             Int
+  remainingTopicsCount Int      @default(0) @map("remaining_topics_count")
+  delayCount           Int      @default(0) @map("delay_count")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exams            LessonExam[]
+  scheduleBlocks   ScheduleBlock[]
+  checklistItems   ChecklistItem[]
+  difficultWeeks   WeeklyFeedback[] @relation("MostDifficultLesson")
+
+  @@map("lessons")
+}
+
+model LessonExam {
+  id               String   @id @default(uuid()) @db.Uuid
+  lessonId         String   @map("lesson_id") @db.Uuid
+  examType         String   @map("exam_type")
+  examDate         DateTime @map("exam_date") @db.Timestamptz(6)
+  weightPercentage Float?   @map("weight_percentage")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_exams")
+}
+
+model WeeklySchedule {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  weekStartDate       DateTime @map("week_start_date") @db.Date
+  weekEndDate         DateTime @map("week_end_date") @db.Date
+  totalAvailableHours Int?     @map("total_available_hours")
+  totalPlannedHours   Int?     @map("total_planned_hours")
+  version             Int      @default(1)
+  status              String   @default("draft")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduleBlocks ScheduleBlock[]
+
+  @@map("weekly_schedules")
+}
+
+model ScheduleBlock {
+  id               String   @id @default(uuid()) @db.Uuid
+  weeklyScheduleId String   @map("weekly_schedule_id") @db.Uuid
+  lessonId         String?  @map("lesson_id") @db.Uuid
+  blockDate        DateTime @map("block_date") @db.Date
+  startTime        DateTime @map("start_time") @db.Time(6)
+  endTime          DateTime @map("end_time") @db.Time(6)
+  plannedHours     Int      @map("planned_hours")
+
+  weeklySchedule WeeklySchedule @relation(fields: [weeklyScheduleId], references: [id], onDelete: Cascade)
+  lesson         Lesson?        @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  checklistItems ChecklistItem[]
+
+  @@map("schedule_blocks")
+}
+
+model DailyChecklist {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  checklistDate      DateTime @map("checklist_date") @db.Date
+  submitted          Boolean  @default(false)
+  overallFocusScore  Float?   @map("overall_focus_score")
+  overallEnergyScore Float?   @map("overall_energy_score")
+  todaySleeped       Int?     @map("today_sleeped")
+  stressLevel        Int      @default(3) @map("stress_level")
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checklistItems ChecklistItem[]
+
+  @@unique([userId, checklistDate])
+  @@map("daily_checklists")
+}
+
+model ChecklistItem {
+  id                 String   @id @default(uuid()) @db.Uuid
+  dailyChecklistId   String   @map("daily_checklist_id") @db.Uuid
+  lessonId           String   @map("lesson_id") @db.Uuid
+  scheduleBlockId    String?  @map("schedule_block_id") @db.Uuid
+  allocatedHours     Int      @map("allocated_hours")
+  completedHours     Int      @default(0) @map("completed_hours")
+  wasCompleted       Boolean  @default(false) @map("was_completed")
+  difficultyFeedback Float?   @map("difficulty_feedback")
+  focusFeedback      Float?   @map("focus_feedback")
+  taskFeltLong       Boolean  @default(false) @map("task_felt_long")
+  postponementReason String?  @map("postponement_reason")
+
+  dailyChecklist DailyChecklist @relation(fields: [dailyChecklistId], references: [id], onDelete: Cascade)
+  lesson         Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  scheduleBlock  ScheduleBlock? @relation(fields: [scheduleBlockId], references: [id], onDelete: SetNull)
+
+  @@map("checklist_items")
+}
+
+model WeeklyFeedback {
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @map("user_id") @db.Uuid
+  weekStartDate         DateTime @map("week_start_date") @db.Date
+  weekEndDate           DateTime @map("week_end_date") @db.Date
+  workloadFeeling       String?  @map("workload_feeling")
+  productivityScore     Float?   @map("productivity_score")
+  sleepQualityScore     Float?   @map("sleep_quality_score")
+  mostDifficultLessonId String?  @map("most_difficult_lesson_id") @db.Uuid
+  feedbackText          String?  @map("feedback_text")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mostDifficultLesson Lesson? @relation("MostDifficultLesson", fields: [mostDifficultLessonId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, weekStartDate, weekEndDate])
+  @@map("weekly_feedbacks")
+}

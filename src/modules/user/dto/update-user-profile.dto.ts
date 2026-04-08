@@ -1,5 +1,4 @@
-import { IsString, IsNumber, IsOptional, Min, Max, IsObject } from 'class-validator';
-import type { BusyTimeMap } from '../user.model.js';
+import { IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpdateUserProfileDto {
   @IsOptional()
@@ -25,5 +24,5 @@ export class UpdateUserProfileDto {
 
   @IsOptional()
   @IsObject()
-  busyTimes?: BusyTimeMap;
+  busyTimes?: Record<string, Record<string, string>>;
 }

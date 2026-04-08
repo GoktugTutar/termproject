@@ -1,9 +1,9 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { UserService } from '../user/user.service.js';
-import { RegisterDto } from './dto/register.dto.js';
-import { LoginDto } from './dto/login.dto.js';
+import { UserService } from '../user/user.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
@@ -15,19 +15,20 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const existing = await this.userService.findByEmail(dto.email);
     if (existing) throw new ConflictException('Email already registered');
-
     const hashed = await bcrypt.hash(dto.password, 10);
-    const user = await this.userService.create({ email: dto.email, password: hashed });
+    const user = await this.userService.create({
+      email: dto.email,
+      password: hashed,
+      name: dto.name,
+    });
     return this.sign(user.id, user.email);
   }
 
   async login(dto: LoginDto) {
     const user = await this.userService.findByEmail(dto.email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
-
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
-
     return this.sign(user.id, user.email);
   }
 

@@ -1,19 +1,36 @@
-import { IsArray, IsNumber, IsString, ValidateNested } from 'class-validator';
+import {
+  IsArray, IsBoolean, IsNumber, IsOptional, IsString,
+  Max, Min, ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class LessonSubmissionDto {
   @IsString()
   lessonId: string;
 
-  /**
-   * hoursCompleted encoding:
-   *   9999  → erken bitti (inf)
-   *  -9999  → hiç yapılmadı (-inf)
-   *   > 0   → tamamlandı (#)
-   *   < 0   → eksik (-#, value = -(hours done))
-   */
+  /** positive = completed hours, negative = partial/skipped, 9999 = completed early, -9999 = not done at all */
   @IsNumber()
   hoursCompleted: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  difficultyFeedback?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  focusFeedback?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  taskFeltLong?: boolean;
+
+  @IsOptional()
+  @IsString()
+  postponementReason?: string;
 }
 
 export class SubmitChecklistDto {
@@ -21,4 +38,31 @@ export class SubmitChecklistDto {
   @ValidateNested({ each: true })
   @Type(() => LessonSubmissionDto)
   lessons: LessonSubmissionDto[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  overallFocusScore?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  overallEnergyScore?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  todaySleeped?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  stressLevel?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

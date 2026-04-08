@@ -1,12 +1,23 @@
 import {
-  IsString,
-  IsNumber,
-  IsOptional,
-  IsDateString,
-  IsArray,
-  Min,
-  Max,
+  IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsString,
+  Max, Min, ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CreateLessonExamDto {
+  @IsString()
+  @IsIn(['midterm', 'final', 'quiz'])
+  examType: string;
+
+  @IsDateString()
+  examDate: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  weightPercentage?: number;
+}
 
 export class CreateLessonDto {
   @IsString()
@@ -19,7 +30,7 @@ export class CreateLessonDto {
   @IsNumber()
   @Min(1)
   @Max(5)
-  difficulty: number; // D
+  difficulty: number;
 
   @IsOptional()
   @IsDateString()
@@ -34,7 +45,18 @@ export class CreateLessonDto {
   @IsDateString({}, { each: true })
   homeworkDeadlines?: string[];
 
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateLessonExamDto)
+  exams?: CreateLessonExamDto[];
+
   @IsNumber()
   @Min(1)
   semester: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  remainingTopicsCount?: number;
 }
