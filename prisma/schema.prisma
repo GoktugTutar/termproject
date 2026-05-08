@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum StudyTime {
+  morning
+  afternoon
+  evening
+  night
+}
+
+enum StudyStyle {
+  deep_focus
+  distributed
+  normal
+}
+
+model User {
+  id                 Int              @id @default(autoincrement())
+  email              String           @unique
+  passwordHash       String
+  preferredStudyTime StudyTime        @default(morning)
+  studyStyle         StudyStyle       @default(normal)
+  busySlots          UserBusySlot[]
+  lessons            Lesson[]
+  checklists         DailyChecklist[]
+  weeklyFeedbacks    WeeklyFeedback[]
+  scheduledBlocks    ScheduledBlock[]
+}
+
+model UserBusySlot {
+  id           Int    @id @default(autoincrement())
+  userId       Int
+  user         User   @relation(fields: [userId], references: [id])
+  dayOfWeek    Int
+  startTime    String
+  endTime      String
+  fatigueLevel Int
+}
+
+model Lesson {
+  id                  Int              @id @default(autoincrement())
+  userId              Int
+  user                User             @relation(fields: [userId], references: [id])
+  name                String
+  difficulty          Int
+  keyfiDelayCount     Int              @default(0)
+  zorunluDelayCount   Int              @default(0)
+  zorunluMissedBlocks Int              @default(0)
+  needsMoreTime       Int              @default(0)
+  exams               LessonExam[]
+  scheduledBlocks     ScheduledBlock[]
+}
+
+model LessonExam {
+  id       Int      @id @default(autoincrement())
+  lessonId Int
+  lesson   Lesson   @relation(fields: [lessonId], references: [id])
+  examDate DateTime
+}
+
+model ScheduledBlock {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  lessonId   Int
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  date       DateTime
+  startTime  String
+  endTime    String
+  blockCount Int
+  isReview   Boolean  @default(false)
+  completed  Boolean  @default(false)
+  weekStart  DateTime
+}
+
+model DailyChecklist {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  user         User            @relation(fields: [userId], references: [id])
+  date         DateTime
+  stressLevel  Int             @default(3)
+  fatigueLevel Int             @default(3)
+  items        ChecklistItem[]
+}
+
+model ChecklistItem {
+  id              Int            @id @default(autoincrement())
+  checklistId     Int
+  checklist       DailyChecklist @relation(fields: [checklistId], references: [id])
+  lessonId        Int
+  plannedBlocks   Int
+  completedBlocks Int            @default(0)
+  delayed         Boolean        @default(false)
+}
+
+model WeeklyFeedback {
+  id               Int              @id @default(autoincrement())
+  userId           Int
+  user             User             @relation(fields: [userId], references: [id])
+  weekStart        DateTime
+  weekloadFeedback String
+  lessonFeedbacks  LessonFeedback[]
+}
+
+model LessonFeedback {
+  id               Int            @id @default(autoincrement())
+  weeklyFeedbackId Int
+  weeklyFeedback   WeeklyFeedback @relation(fields: [weeklyFeedbackId], references: [id])
+  lessonId         Int
+  needsMoreTime    Int
+}
