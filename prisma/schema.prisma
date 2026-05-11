@@ -55,6 +55,7 @@ model Lesson {
   zorunluMissedBlocks Int              @default(0)
   needsMoreTime       Int              @default(0)
   exams               LessonExam[]
+  deadlines           LessonDeadline[]
   scheduledBlocks     ScheduledBlock[]
 }
 
@@ -63,6 +64,14 @@ model LessonExam {
   lessonId Int
   lesson   Lesson   @relation(fields: [lessonId], references: [id])
   examDate DateTime
+}
+
+model LessonDeadline {
+  id           Int      @id @default(autoincrement())
+  lessonId     Int
+  lesson       Lesson   @relation(fields: [lessonId], references: [id])
+  deadlineDate DateTime
+  title        String?
 }
 
 model ScheduledBlock {

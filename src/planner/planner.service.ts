@@ -94,7 +94,7 @@ export class PlannerService {
       where: { id: userId },
       include: {
         busySlots: true,
-        lessons: { include: { exams: true } },
+        lessons: { include: { exams: true, deadlines: true } },
         weeklyFeedbacks: { orderBy: { weekStart: 'desc' }, take: 1 },
         checklists: {
           where: { date: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },

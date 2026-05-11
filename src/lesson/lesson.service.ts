@@ -11,7 +11,7 @@ export class LessonService {
   async findAll(userId: number) {
     return this.prisma.lesson.findMany({
       where: { userId },
-      include: { exams: true },
+      include: { exams: true, deadlines: true },
     });
   }
 
@@ -19,7 +19,7 @@ export class LessonService {
   async create(userId: number, dto: CreateLessonDto) {
     return this.prisma.lesson.create({
       data: { ...dto, userId },
-      include: { exams: true },
+      include: { exams: true, deadlines: true },
     });
   }
 
@@ -32,7 +32,7 @@ export class LessonService {
     return this.prisma.lesson.update({
       where: { id: lessonId },
       data: dto,
-      include: { exams: true },
+      include: { exams: true, deadlines: true },
     });
   }
 
@@ -54,5 +54,28 @@ export class LessonService {
     return this.prisma.lessonExam.create({
       data: { lessonId, examDate: new Date(examDate) },
     });
+  }
+
+  // Derse deadline / ödev ekle
+  async addDeadline(userId: number, lessonId: number, deadlineDate: string, title?: string) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId } });
+    if (!lesson) throw new NotFoundException('Ders bulunamadı');
+    if (lesson.userId !== userId) throw new ForbiddenException();
+
+    return this.prisma.lessonDeadline.create({
+      data: { lessonId, deadlineDate: new Date(deadlineDate), title: title ?? null },
+    });
+  }
+
+  // Deadline sil
+  async removeDeadline(userId: number, lessonId: number, deadlineId: number) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId } });
+    if (!lesson) throw new NotFoundException('Ders bulunamadı');
+    if (lesson.userId !== userId) throw new ForbiddenException();
+
+    const deadline = await this.prisma.lessonDeadline.findUnique({ where: { id: deadlineId } });
+    if (!deadline || deadline.lessonId !== lessonId) throw new NotFoundException('Deadline bulunamadı');
+
+    return this.prisma.lessonDeadline.delete({ where: { id: deadlineId } });
   }
 }

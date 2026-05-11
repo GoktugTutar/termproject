@@ -3,6 +3,7 @@ import { LessonService } from './lesson.service';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { AddExamDto } from './dto/add-exam.dto';
+import { AddDeadlineDto } from './dto/add-deadline.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -46,5 +47,25 @@ export class LessonController {
     @Body() dto: AddExamDto,
   ) {
     return this.lessonService.addExam(req.user.id, id, dto.examDate);
+  }
+
+  // Derse deadline / ödev ekle
+  @Post(':id/deadline')
+  addDeadline(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddDeadlineDto,
+  ) {
+    return this.lessonService.addDeadline(req.user.id, id, dto.deadlineDate, dto.title);
+  }
+
+  // Deadline sil
+  @Delete(':id/deadline/:deadlineId')
+  removeDeadline(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('deadlineId', ParseIntPipe) deadlineId: number,
+  ) {
+    return this.lessonService.removeDeadline(req.user.id, id, deadlineId);
   }
 }
