@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserService } from '../user/user.service';
 import { SubmitChecklistDto } from './dto/submit-checklist.dto';
 import { getCurrentTime } from '../utils/time.util';
 
 @Injectable()
 export class ChecklistService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private userService: UserService,
+  ) {}
 
   // Günlük checklist gönder: stres/yorgunluk ve ders ilerlemelerini kaydet
   async submit(userId: number, dto: SubmitChecklistDto) {
@@ -74,6 +78,9 @@ export class ChecklistService {
         });
       }
     }
+
+    // Dijital ikiz profilini güncelle
+    this.userService.updateStudentProfile(userId).catch(() => {}); // fire-and-forget
 
     return this.getByDate(userId, today.toISOString().substring(0, 10));
   }

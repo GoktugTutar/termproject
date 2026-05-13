@@ -32,7 +32,36 @@ model User {
   checklists         DailyChecklist[]
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
+  profile            StudentProfile?
 }
+
+model StudentProfile {
+  id                 Int      @id @default(autoincrement())
+  userId             Int      @unique
+  user               User     @relation(fields: [userId], references: [id])
+  updatedAt          DateTime @updatedAt
+
+  // Rolling 7-day metrics
+  completionRate7d   Float    @default(0)
+  avgStress7d        Float    @default(3)
+  avgFatigue7d       Float    @default(3)
+
+  // Per-day-of-week completion rates (Mon=0..Sun=6), stored as JSON string
+  dowCompletionRates String   @default("[0,0,0,0,0,0,0]")
+
+  // Avg blockCount in sessions where student fully completed (sweet spot)
+  sweetSpotBlocks    Float    @default(2)
+
+  // Avg stress on days where an exam is <=7 days away
+  stressNearExam     Float    @default(3)
+
+  // % of last 14 days with at least 1 completed block
+  consistencyScore   Float    @default(0)
+
+  // Total submissions used to weight averages
+  totalSubmissions   Int      @default(0)
+}
+
 
 model UserBusySlot {
   id           Int    @id @default(autoincrement())

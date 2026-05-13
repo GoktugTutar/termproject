@@ -26,4 +26,10 @@ export class UserController {
   updateBusySlots(@Request() req, @Body() dto: UpdateBuslySlotsDto) {
     return this.userService.updateBusySlots(req.user.id, dto.busySlots);
   }
+
+  // Dijital ikiz profilini getir
+  @Get('student-profile')
+  getStudentProfile(@Request() req) {
+    return this.userService.getStudentProfile(req.user.id);
+  }
 }
