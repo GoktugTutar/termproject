@@ -191,9 +191,14 @@ export class PlannerService {
       lessonAllocations,
     );
 
-    // ADIM 8: Dersleri yerleştir
-    const { placed: lessonPlaced, notFitted } = step8Placement(
-      cognitiveOrdered.map((l) => ({ lessonId: l.lessonId, slottedMode: slottedModeMap.get(l.lessonId) ?? false })),
+    // ADIM 8: Dersleri gün/ders sınıfı eşleşmesiyle yerleştir
+    const { placed: lessonPlaced, notFitted, programZorlastu } = step8Placement(
+      cognitiveOrdered.map((l) => ({
+        lessonId: l.lessonId,
+        slottedMode: slottedModeMap.get(l.lessonId) ?? false,
+        difficulty: l.difficulty,
+        priority: l.priority,
+      })),
       updatedAllocations,
       dayConfigs,
       updatedFreeWindows,
@@ -221,7 +226,8 @@ export class PlannerService {
       });
     }
 
-    return this.getWeekBlocks(userId);
+    const weekBlocks = await this.getWeekBlocks(userId);
+    return { ...weekBlocks, programZorlastu };
   }
 
   // Haftanın planlanan bloklarını getir

@@ -16,6 +16,7 @@ const lesson_module_1 = require("./lesson/lesson.module");
 const planner_module_1 = require("./planner/planner.module");
 const checklist_module_1 = require("./checklist/checklist.module");
 const feedback_module_1 = require("./feedback/feedback.module");
+const system_feedback_module_1 = require("./system-feedback/system-feedback.module");
 const debug_controller_1 = require("./debug/debug.controller");
 let AppModule = class AppModule {
 };
@@ -31,6 +32,7 @@ exports.AppModule = AppModule = __decorate([
             planner_module_1.PlannerModule,
             checklist_module_1.ChecklistModule,
             feedback_module_1.FeedbackModule,
+            system_feedback_module_1.SystemFeedbackModule,
         ],
         controllers: [debug_controller_1.DebugController],
     })

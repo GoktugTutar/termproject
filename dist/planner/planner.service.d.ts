@@ -8,6 +8,7 @@ export declare class PlannerService {
     private mergeBusySlots;
     private getFreeWindows;
     createWeeklyPlan(userId: number): Promise<{
+        programZorlastu: boolean;
         weekStart: Date;
         blocks: ({
             lesson: {
@@ -60,6 +61,7 @@ export declare class PlannerService {
         })[];
     }>;
     recalculate(userId: number): Promise<{
+        programZorlastu: boolean;
         weekStart: Date;
         blocks: ({
             lesson: {

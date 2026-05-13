@@ -90,7 +90,7 @@ let PlannerService = class PlannerService {
             where: { id: userId },
             include: {
                 busySlots: true,
-                lessons: { include: { exams: true } },
+                lessons: { include: { exams: true, deadlines: true } },
                 weeklyFeedbacks: { orderBy: { weekStart: 'desc' }, take: 1 },
                 checklists: {
                     where: { date: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
@@ -139,7 +139,12 @@ let PlannerService = class PlannerService {
             freeWindows[dateStr] = this.getFreeWindows(mergedBusy);
         }
         const { placed: reviewPlaced, updatedAllocations, updatedFreeWindows } = (0, step7_5_place_review_1.step7_5PlaceReview)(reviewBlocks, freeWindows, user.preferredStudyTime, lessonAllocations);
-        const { placed: lessonPlaced, notFitted } = (0, step8_placement_1.step8Placement)(cognitiveOrdered.map((l) => ({ lessonId: l.lessonId, slottedMode: slottedModeMap.get(l.lessonId) ?? false })), updatedAllocations, dayConfigs, updatedFreeWindows, user.preferredStudyTime);
+        const { placed: lessonPlaced, notFitted, programZorlastu } = (0, step8_placement_1.step8Placement)(cognitiveOrdered.map((l) => ({
+            lessonId: l.lessonId,
+            slottedMode: slottedModeMap.get(l.lessonId) ?? false,
+            difficulty: l.difficulty,
+            priority: l.priority,
+        })), updatedAllocations, dayConfigs, updatedFreeWindows, user.preferredStudyTime);
         await this.prisma.scheduledBlock.deleteMany({
             where: { userId, weekStart },
         });
@@ -158,7 +163,8 @@ let PlannerService = class PlannerService {
                 },
             });
         }
-        return this.getWeekBlocks(userId);
+        const weekBlocks = await this.getWeekBlocks(userId);
+        return { ...weekBlocks, programZorlastu };
     }
     async getWeekBlocks(userId) {
         const now = (0, time_util_1.getCurrentTime)();

@@ -3,6 +3,7 @@ export declare class PlannerController {
     private plannerService;
     constructor(plannerService: PlannerService);
     create(req: any): Promise<{
+        programZorlastu: boolean;
         weekStart: Date;
         blocks: ({
             lesson: {
@@ -29,6 +30,7 @@ export declare class PlannerController {
         })[];
     }>;
     recalculate(req: any): Promise<{
+        programZorlastu: boolean;
         weekStart: Date;
         blocks: ({
             lesson: {

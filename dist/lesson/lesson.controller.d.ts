@@ -2,6 +2,7 @@ import { LessonService } from './lesson.service';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { AddExamDto } from './dto/add-exam.dto';
+import { AddDeadlineDto } from './dto/add-deadline.dto';
 export declare class LessonController {
     private lessonService;
     constructor(lessonService: LessonService);
@@ -10,6 +11,12 @@ export declare class LessonController {
             id: number;
             examDate: Date;
             lessonId: number;
+        }[];
+        deadlines: {
+            id: number;
+            lessonId: number;
+            deadlineDate: Date;
+            title: string | null;
         }[];
     } & {
         id: number;
@@ -27,6 +34,12 @@ export declare class LessonController {
             examDate: Date;
             lessonId: number;
         }[];
+        deadlines: {
+            id: number;
+            lessonId: number;
+            deadlineDate: Date;
+            title: string | null;
+        }[];
     } & {
         id: number;
         name: string;
@@ -42,6 +55,12 @@ export declare class LessonController {
             id: number;
             examDate: Date;
             lessonId: number;
+        }[];
+        deadlines: {
+            id: number;
+            lessonId: number;
+            deadlineDate: Date;
+            title: string | null;
         }[];
     } & {
         id: number;
@@ -67,5 +86,17 @@ export declare class LessonController {
         id: number;
         examDate: Date;
         lessonId: number;
+    }>;
+    addDeadline(req: any, id: number, dto: AddDeadlineDto): Promise<{
+        id: number;
+        lessonId: number;
+        deadlineDate: Date;
+        title: string | null;
+    }>;
+    removeDeadline(req: any, id: number, deadlineId: number): Promise<{
+        id: number;
+        lessonId: number;
+        deadlineDate: Date;
+        title: string | null;
     }>;
 }

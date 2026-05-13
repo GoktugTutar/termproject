@@ -10,6 +10,12 @@ export declare class LessonService {
             examDate: Date;
             lessonId: number;
         }[];
+        deadlines: {
+            id: number;
+            lessonId: number;
+            deadlineDate: Date;
+            title: string | null;
+        }[];
     } & {
         id: number;
         name: string;
@@ -26,6 +32,12 @@ export declare class LessonService {
             examDate: Date;
             lessonId: number;
         }[];
+        deadlines: {
+            id: number;
+            lessonId: number;
+            deadlineDate: Date;
+            title: string | null;
+        }[];
     } & {
         id: number;
         name: string;
@@ -41,6 +53,12 @@ export declare class LessonService {
             id: number;
             examDate: Date;
             lessonId: number;
+        }[];
+        deadlines: {
+            id: number;
+            lessonId: number;
+            deadlineDate: Date;
+            title: string | null;
         }[];
     } & {
         id: number;
@@ -66,5 +84,17 @@ export declare class LessonService {
         id: number;
         examDate: Date;
         lessonId: number;
+    }>;
+    addDeadline(userId: number, lessonId: number, deadlineDate: string, title?: string): Promise<{
+        id: number;
+        lessonId: number;
+        deadlineDate: Date;
+        title: string | null;
+    }>;
+    removeDeadline(userId: number, lessonId: number, deadlineId: number): Promise<{
+        id: number;
+        lessonId: number;
+        deadlineDate: Date;
+        title: string | null;
     }>;
 }

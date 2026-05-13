@@ -1,3 +1,6 @@
+import { DayConfig } from './step5-day-distribution';
+export type LessonClass = 'AGIR' | 'ORTA' | 'HAFIF';
+export type DayClass = 'rahat' | 'normal' | 'yorucu';
 export interface TimeWindow {
     start: number;
     end: number;
@@ -13,11 +16,10 @@ export interface PlacedBlock {
 export declare function step8Placement(lessonOrder: Array<{
     lessonId: number;
     slottedMode: boolean;
-}>, lessonAllocations: Record<number, number>, dayConfigs: Array<{
-    date: Date;
-    maxBlocks: number;
-    maxBlocksPerSession: number;
-}>, freeWindows: Record<string, TimeWindow[]>, preferredStudyTime: string): {
+    difficulty: number;
+    priority: string;
+}>, lessonAllocations: Record<number, number>, dayConfigs: DayConfig[], freeWindows: Record<string, TimeWindow[]>, preferredStudyTime: string): {
     placed: PlacedBlock[];
     notFitted: Record<number, number>;
+    programZorlastu: boolean;
 };

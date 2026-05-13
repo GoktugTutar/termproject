@@ -7,6 +7,7 @@ import { LessonModule } from './lesson/lesson.module';
 import { PlannerModule } from './planner/planner.module';
 import { ChecklistModule } from './checklist/checklist.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { SystemFeedbackModule } from './system-feedback/system-feedback.module';
 import { DebugController } from './debug/debug.controller';
 
 @Module({
@@ -19,6 +20,7 @@ import { DebugController } from './debug/debug.controller';
     PlannerModule,
     ChecklistModule,
     FeedbackModule,
+    SystemFeedbackModule,
   ],
   controllers: [DebugController],
 })
