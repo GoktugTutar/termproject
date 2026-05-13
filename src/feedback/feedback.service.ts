@@ -107,6 +107,64 @@ export class FeedbackService {
       }
     }
 
+    // Tetikleyici 5: Son 3 günde stres >= 4 → yük azaltma önerisi
+    const last3Days = Array.from({ length: 3 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    });
+
+    const recentChecklists = await this.prisma.dailyChecklist.findMany({
+      where: {
+        userId,
+        date: { gte: last3Days[2], lte: now },
+      },
+      orderBy: { date: 'desc' },
+      take: 3,
+    });
+
+    if (recentChecklists.length >= 3) {
+      const allHighStress = recentChecklists.every((c) => c.stressLevel >= 4);
+      if (allHighStress) {
+        messages.push({
+          type: 'yuksek_stres',
+          message: `Son 3 gündür stres seviyeniz yüksek (≥4).`,
+          suggestion: 'Meşguliyet slotlarını gözden geçirmeyi veya daha hafif bir hafta planlamayı düşün.',
+        });
+      }
+    }
+
+    // Tetikleyici 6: Son 2 günde tamamlanan blok yok → hareketsizlik uyarısı
+    const last2Days = Array.from({ length: 2 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i - 1); // dün ve önceki gün
+      d.setHours(0, 0, 0, 0);
+      return d;
+    });
+
+    const inactiveChecklists = await this.prisma.dailyChecklist.findMany({
+      where: {
+        userId,
+        date: { gte: last2Days[1], lt: new Date(now.setHours(0, 0, 0, 0)) },
+      },
+      include: { items: true },
+    });
+
+    // Her iki gün için de checklist var ve tamamlanan blok = 0
+    if (inactiveChecklists.length >= 2) {
+      const bothInactive = inactiveChecklists.every((c) =>
+        c.items.reduce((sum, item) => sum + item.completedBlocks, 0) === 0,
+      );
+      if (bothInactive) {
+        messages.push({
+          type: 'hareketsizlik',
+          message: 'Son 2 gündür hiç çalışma bloğu tamamlanmadı.',
+          suggestion: 'Bugün kısa bir oturumla başlamayı dene — 30 dakika bile fark yaratır.',
+        });
+      }
+    }
+
     return messages;
   }
 
