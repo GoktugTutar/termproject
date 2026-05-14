@@ -25,7 +25,7 @@ export function step7_5PlaceReview(
   const preferredRange = getPreferredRange(preferredStudyTime);
 
   for (const rb of reviewBlocks) {
-    const dateStr = rb.date.toISOString().substring(0, 10);
+    const d = rb.date; const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const windows = updatedFreeWindows[dateStr] || [];
     const neededMin = rb.blocks * 30;
 
@@ -75,11 +75,7 @@ export function step7_5PlaceReview(
 
     updatedFreeWindows[dateStr] = windows.filter((w) => w.end > w.start);
 
-    // Yerleştirildiyse dersin haftalık hakkından düş
-    if (placedOk) {
-      const current = updatedAllocations[rb.lessonId] ?? 0;
-      updatedAllocations[rb.lessonId] = Math.max(0, current - rb.blocks);
-    }
+    // Review bloklar ekstra çalışmadır — haftalık tahsisten düşülmez
   }
 
   return { placed, updatedAllocations, updatedFreeWindows };
