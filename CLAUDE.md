@@ -362,14 +362,41 @@ Tüm modüller `new Date()` yerine `getCurrentTime()` kullanır.
 
 ```typescript
 // MODE=prod → gerçek sistem saati
-// MODE=test → önce runtime override (POST /debug/clock), sonra TEST_CURRENT_TIME env, sonra gerçek saat
+// MODE=test → _testOverride varsa onu döndür, yoksa new Date() (gerçek saat)
 export function getCurrentTime(): Date { ... }
 export function setTestTimeOverride(dt: Date | null): void { ... }
 ```
 
+### Backend — `MODE=test` saat öncelik sırası
+
+1. `_testOverride` (bellekte) — `POST /debug/clock` ile set edilir, sunucu açılışında `.clock-override` dosyasından okunur
+2. `new Date()` — override yoksa gerçek sistem saati kullanılır
+
+### `.clock-override` dosyası (`termproject/.clock-override`)
+
+`POST /debug/clock` çağrıldığında ISO tarih string'i bu dosyaya yazılır.
+Sunucu restart'ta modül yüklenirken dosyadan okunur → saat sıfırlanmaz.
+Override silindiğinde (`POST /debug/clock` body'siz) dosya da silinir.
+
+> `TEST_CURRENT_TIME` `.env` değişkeni artık kullanılmıyor.
+
+### Flutter — `AppTime` (`core/app_time.dart`)
+
+```
+Uygulama açılışında AppTime.init() bir kez çalışır:
+  GET /debug/mode → { mode, current }
+  → _override = backend'den gelen current değeri
+
+AppTime.now() → _override ?? DateTime.now()
+(sonraki çağrılarda backend'e sorulmaz)
+
+_override güncelleme: profil ekranındaki Edit butonuyla
+  → ApiClient.setTestClock() + AppTime.setOverride() aynı anda çağrılır
+```
+
 `.env` dosyasında:
 - `MODE=prod` → gerçek saat kullanılır, `/debug/clock` istekleri yok sayılır
-- `MODE=test` → `POST /debug/clock` ile saat override edilebilir
+- `MODE=test` → `POST /debug/clock` ile saat override edilebilir; override `.clock-override` dosyasında kalıcıdır
 
 ---
 

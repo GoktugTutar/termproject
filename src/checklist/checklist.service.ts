@@ -148,6 +148,37 @@ export class ChecklistService {
     return this.getByDate(userId, this.toLocalDateStr(today));
   }
 
+  // Son `days` günün checklist durumunu döndürür:
+  // hasBlocks (o gün planlanmış blok var mı) ve hasChecklist (checklist girildi mi)
+  async getHistory(userId: number, days: number) {
+    const today = this.startOfLocalDay(getCurrentTime());
+    const result: { date: string; hasBlocks: boolean; hasChecklist: boolean }[] =
+      [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const nextDay = this.nextLocalDay(d);
+
+      const [blockCount, checklistCount] = await Promise.all([
+        this.prisma.scheduledBlock.count({
+          where: { userId, date: { gte: d, lt: nextDay } },
+        }),
+        this.prisma.dailyChecklist.count({
+          where: { userId, date: { gte: d, lt: nextDay } },
+        }),
+      ]);
+
+      result.push({
+        date: this.toLocalDateStr(d),
+        hasBlocks: blockCount > 0,
+        hasChecklist: checklistCount > 0,
+      });
+    }
+
+    return result;
+  }
+
   // Tarihe göre günlük checklist getir
   async getByDate(userId: number, dateStr: string) {
     const date = this.parseLocalDate(dateStr);
@@ -159,6 +190,22 @@ export class ChecklistService {
     });
   }
 
+  // Belirli bir günde kullanıcının planlanmış bloğu var mı kontrol eder
+  private async hasScheduledBlocksForDate(
+    userId: number,
+    date: Date,
+  ): Promise<boolean> {
+    const nextDay = this.nextLocalDay(date);
+    const count = await this.prisma.scheduledBlock.count({
+      where: { userId, date: { gte: date, lt: nextDay } },
+    });
+    return count > 0;
+  }
+
+  // Haftanın başından bugüne (bugün hariç) checklist durumunu döndürür.
+  // Sadece o gün planlanmış bloğu olan günler eksik sayılır.
+  // Pazartesi çağrıldığında weekStart == date olduğundan döngü hiç çalışmaz
+  // → geçen hafta eksik checklistler yeni haftayı engellemez.
   async getStatus(userId: number, dateStr: string) {
     const date = this.parseLocalDate(dateStr);
     const weekStart = this.getWeekStart(date);
@@ -169,7 +216,8 @@ export class ChecklistService {
       cursor < date;
       cursor = this.nextLocalDay(cursor)
     ) {
-      if (!(await this.hasChecklistForDate(userId, cursor))) {
+      const hasBlocks = await this.hasScheduledBlocksForDate(userId, cursor);
+      if (hasBlocks && !(await this.hasChecklistForDate(userId, cursor))) {
         missingDates.push(this.toLocalDateStr(cursor));
       }
     }

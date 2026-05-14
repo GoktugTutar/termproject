@@ -22,6 +22,12 @@ export class ChecklistController {
     return this.checklistService.submit(req.user.id, dto);
   }
 
+  // Son 35 günün checklist durumunu döndürür (profil ısı haritası)
+  @Get('history')
+  getHistory(@Request() req) {
+    return this.checklistService.getHistory(req.user.id, 35);
+  }
+
   // Aynı hafta içinde önceki eksik checklistleri kontrol et
   @Get('status/:date')
   getStatus(@Request() req, @Param('date') date: string) {
