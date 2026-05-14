@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ChecklistService } from './checklist.service';
 import { SubmitChecklistDto } from './dto/submit-checklist.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -12,6 +20,12 @@ export class ChecklistController {
   @Post('submit')
   submit(@Request() req, @Body() dto: SubmitChecklistDto) {
     return this.checklistService.submit(req.user.id, dto);
+  }
+
+  // Aynı hafta içinde önceki eksik checklistleri kontrol et
+  @Get('status/:date')
+  getStatus(@Request() req, @Param('date') date: string) {
+    return this.checklistService.getStatus(req.user.id, date);
   }
 
   // Tarihe göre checklist getir

@@ -11,13 +11,70 @@ export class ChecklistService {
     private userService: UserService,
   ) {}
 
+  private startOfLocalDay(date: Date): Date {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private parseLocalDate(dateStr: string): Date {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return this.startOfLocalDay(new Date(year, month - 1, day));
+  }
+
+  private toLocalDateStr(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  private nextLocalDay(date: Date): Date {
+    const next = new Date(date);
+    next.setDate(next.getDate() + 1);
+    return next;
+  }
+
+  private getWeekStart(date: Date): Date {
+    const d = this.startOfLocalDay(date);
+    const day = d.getDay(); // 0=Paz, 1=Pzt
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+
+  private async hasChecklistForDate(
+    userId: number,
+    date: Date,
+  ): Promise<boolean> {
+    const nextDay = this.nextLocalDay(date);
+    const count = await this.prisma.dailyChecklist.count({
+      where: { userId, date: { gte: date, lt: nextDay } },
+    });
+    return count > 0;
+  }
+
+  private async adjustLessonDelayCount(lessonId: number, delta: number) {
+    if (delta === 0) return;
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      select: { keyfiDelayCount: true },
+    });
+    if (!lesson) return;
+    await this.prisma.lesson.update({
+      where: { id: lessonId },
+      data: {
+        keyfiDelayCount: Math.max(0, lesson.keyfiDelayCount + delta),
+      },
+    });
+  }
+
   // Günlük checklist gönder: stres/yorgunluk ve ders ilerlemelerini kaydet
   async submit(userId: number, dto: SubmitChecklistDto) {
-    const now = getCurrentTime();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const today = dto.date
+      ? this.parseLocalDate(dto.date)
+      : this.startOfLocalDay(getCurrentTime());
+    const tomorrow = this.nextLocalDay(today);
 
     // Bugüne ait checklist'i bul veya oluştur
     let checklist = await this.prisma.dailyChecklist.findFirst({
@@ -49,13 +106,24 @@ export class ChecklistService {
         where: { checklistId: checklist.id, lessonId: item.lessonId },
       });
 
+      const delayed = item.completedBlocks < item.plannedBlocks;
+      const delayDelta = existing
+        ? delayed === existing.delayed
+          ? 0
+          : delayed
+            ? 1
+            : -1
+        : delayed
+          ? 1
+          : 0;
+
       if (existing) {
         await this.prisma.checklistItem.update({
           where: { id: existing.id },
           data: {
             plannedBlocks: item.plannedBlocks,
             completedBlocks: item.completedBlocks,
-            delayed: item.delayed ?? false,
+            delayed,
           },
         });
       } else {
@@ -65,35 +133,52 @@ export class ChecklistService {
             lessonId: item.lessonId,
             plannedBlocks: item.plannedBlocks,
             completedBlocks: item.completedBlocks,
-            delayed: item.delayed ?? false,
+            delayed,
           },
         });
       }
 
-      // Keyfi erteleme: dersin delay sayacını artır
-      if (item.delayed) {
-        await this.prisma.lesson.update({
-          where: { id: item.lessonId },
-          data: { keyfiDelayCount: { increment: 1 } },
-        });
-      }
+      // Keyfi erteleme yalnızca submit edilmiş ve eksik kalmış derslerden gelir.
+      await this.adjustLessonDelayCount(item.lessonId, delayDelta);
     }
 
     // Dijital ikiz profilini güncelle
     this.userService.updateStudentProfile(userId).catch(() => {}); // fire-and-forget
 
-    return this.getByDate(userId, today.toISOString().substring(0, 10));
+    return this.getByDate(userId, this.toLocalDateStr(today));
   }
 
   // Tarihe göre günlük checklist getir
   async getByDate(userId: number, dateStr: string) {
-    const date = new Date(dateStr);
-    const nextDay = new Date(date);
-    nextDay.setDate(nextDay.getDate() + 1);
+    const date = this.parseLocalDate(dateStr);
+    const nextDay = this.nextLocalDay(date);
 
     return this.prisma.dailyChecklist.findFirst({
       where: { userId, date: { gte: date, lt: nextDay } },
       include: { items: true },
     });
+  }
+
+  async getStatus(userId: number, dateStr: string) {
+    const date = this.parseLocalDate(dateStr);
+    const weekStart = this.getWeekStart(date);
+    const missingDates: string[] = [];
+
+    for (
+      let cursor = new Date(weekStart);
+      cursor < date;
+      cursor = this.nextLocalDay(cursor)
+    ) {
+      if (!(await this.hasChecklistForDate(userId, cursor))) {
+        missingDates.push(this.toLocalDateStr(cursor));
+      }
+    }
+
+    return {
+      date: this.toLocalDateStr(date),
+      blocked: missingDates.length > 0,
+      missingDates,
+      checklist: await this.getByDate(userId, this.toLocalDateStr(date)),
+    };
   }
 }

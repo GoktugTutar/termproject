@@ -1,4 +1,13 @@
-import { IsInt, IsArray, IsBoolean, IsOptional, Min, Max, ValidateNested } from 'class-validator';
+import {
+  IsInt,
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  Min,
+  Max,
+  ValidateNested,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ChecklistItemDto {
@@ -19,6 +28,10 @@ export class ChecklistItemDto {
 }
 
 export class SubmitChecklistDto {
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
   @IsInt()
   @Min(1)
   @Max(5)
