@@ -59,9 +59,42 @@ export function step4CalculateX(
   const proportional = weights.map((w) => (effectiveBlocks * w) / totalWeight);
   const allocated = largestRemainder(proportional, effectiveBlocks);
 
+  // Ders sınıfına göre haftalık fiziksel üst sınırlar:
+  // AGIR (diff>=4): art arda gün kuralı → max 4 blok/hafta
+  // ORTA (diff 3):  günlük 2 blok, 5 gün → max 8 blok/hafta
+  // HAFIF (diff<=2): günlük 2 blok, 5 gün → max 6 blok/hafta
+  const weeklyMax = (difficulty: number) => {
+    if (difficulty >= 4) return 4;
+    if (difficulty === 3) return 8;
+    return 6;
+  };
+
+  let overflow = 0;
+  const capped = allocated.map((blocks, i) => {
+    const max = weeklyMax(lessons[i].difficulty);
+    if (blocks > max) {
+      overflow += blocks - max;
+      return max;
+    }
+    return blocks;
+  });
+
+  // Taşan blokları kalan kapasitesi olan derslere difficulty oranında dağıt
+  if (overflow > 0) {
+    const hasCapacity = lessons
+      .map((l, i) => ({ i, difficulty: l.difficulty, slack: weeklyMax(l.difficulty) - capped[i] }))
+      .filter(({ slack }) => slack > 0);
+    const totalSlack = hasCapacity.reduce((s, { slack }) => s + slack, 0);
+    let toDistribute = Math.min(overflow, totalSlack);
+    for (const { i, slack } of hasCapacity) {
+      const share = Math.round((slack / totalSlack) * toDistribute);
+      capped[i] += Math.min(share, slack);
+    }
+  }
+
   // Zorunlu telafi bloğu ekle (önceki haftadan kalan eksikler)
   return lessons.map((lesson, i) => {
-    const base = allocated[i];
+    const base = capped[i];
     const extra = lesson.zorunluDelayCount > 0 ? lesson.zorunluMissedBlocks : 0;
     return {
       lessonId: lesson.id,
