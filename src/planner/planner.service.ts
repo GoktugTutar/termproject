@@ -40,6 +40,13 @@ export class PlannerService {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   }
 
+  private toLocalDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
   // Çakışan busy slotları birleştir (merge)
   private mergeBusySlots(slots: Array<{ startTime: string; endTime: string }>): Array<{ start: number; end: number }> {
     if (slots.length === 0) return [];
@@ -127,6 +134,7 @@ export class PlannerService {
     // ADIM 2: Efektif blok havuzu
     const effectiveBlocks = step2Pool(multiplier);
 
+
     // Hafta günlerini (Pazartesi-Pazar) oluştur
     const weekDays = Array.from({ length: 7 }, (_, i) => {
       const date = new Date(weekStart);
@@ -173,10 +181,11 @@ export class PlannerService {
     }));
     const cognitiveOrdered = step7CognitiveLoad(orderedWithDifficulty);
 
+
     // Her gün için boş zaman pencerelerini oluştur
     const freeWindows: Record<string, Array<{ start: number; end: number }>> = {};
     for (const day of weekDays) {
-      const dateStr = day.date.toISOString().substring(0, 10);
+      const dateStr = this.toLocalDateStr(day.date);
       const mergedBusy = this.mergeBusySlots(
         day.busySlots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
       );
@@ -204,6 +213,7 @@ export class PlannerService {
       updatedFreeWindows,
       user.preferredStudyTime,
     );
+
 
     // Mevcut hafta bloklarını sil ve yenilerini veritabanına kaydet
     await this.prisma.scheduledBlock.deleteMany({
