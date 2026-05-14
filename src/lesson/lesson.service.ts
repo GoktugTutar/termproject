@@ -7,18 +7,24 @@ import { UpdateLessonDto } from './dto/update-lesson.dto';
 export class LessonService {
   constructor(private prisma: PrismaService) {}
 
-  // Kullanıcının tüm derslerini sınav tarihleriyle birlikte getir
+  // Kullanıcının tüm derslerini sınav tarihleriyle birlikte getir (sadece aktif dönem)
   async findAll(userId: number) {
+    const activeTerm = await this.prisma.term.findFirst({
+      where: { userId, isActive: true },
+    });
     return this.prisma.lesson.findMany({
-      where: { userId },
+      where: { userId, termId: activeTerm ? activeTerm.id : null },
       include: { exams: true, deadlines: true },
     });
   }
 
-  // Yeni ders oluştur
+  // Yeni ders oluştur (aktif döneme bağla)
   async create(userId: number, dto: CreateLessonDto) {
+    const activeTerm = await this.prisma.term.findFirst({
+      where: { userId, isActive: true },
+    });
     return this.prisma.lesson.create({
-      data: { ...dto, userId },
+      data: { ...dto, userId, termId: activeTerm?.id ?? null },
       include: { exams: true, deadlines: true },
     });
   }

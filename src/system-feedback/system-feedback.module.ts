@@ -7,5 +7,6 @@ import { PrismaModule } from '../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [SystemFeedbackController],
   providers: [SystemFeedbackService],
+  exports: [SystemFeedbackService],
 })
 export class SystemFeedbackModule {}

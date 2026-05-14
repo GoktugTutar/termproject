@@ -167,6 +167,26 @@ export class UserService {
     });
   }
 
+  // Aktif dönemi sonlandır
+  async endTerm(userId: number): Promise<{ ok: boolean }> {
+    await this.prisma.term.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false, endedAt: getCurrentTime() },
+    });
+    return { ok: true };
+  }
+
+  // Aktif dönemi sonlandır ve yeni boş dönem başlat
+  async startTerm(userId: number, name?: string): Promise<object> {
+    await this.prisma.term.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false, endedAt: getCurrentTime() },
+    });
+    return this.prisma.term.create({
+      data: { userId, name: name ?? null, isActive: true },
+    });
+  }
+
   // Dijital ikiz profilini getir (yoksa boş oluştur)
   async getStudentProfile(userId: number) {
     return this.prisma.studentProfile.upsert({

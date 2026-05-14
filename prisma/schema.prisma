@@ -29,6 +29,7 @@ model User {
   studyStyle         StudyStyle       @default(normal)
   busySlots          UserBusySlot[]
   lessons            Lesson[]
+  terms              Term[]
   checklists         DailyChecklist[]
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
@@ -73,10 +74,23 @@ model UserBusySlot {
   fatigueLevel Int
 }
 
+model Term {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id])
+  name      String?
+  isActive  Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  lessons   Lesson[]
+}
+
 model Lesson {
   id                  Int              @id @default(autoincrement())
   userId              Int
   user                User             @relation(fields: [userId], references: [id])
+  termId              Int?
+  term                Term?            @relation(fields: [termId], references: [id])
   name                String
   difficulty          Int
   keyfiDelayCount     Int              @default(0)

@@ -1,4 +1,4 @@
-import { Controller, Post, Put, Body, UseGuards, Request, Get } from '@nestjs/common';
+import { Controller, Post, Put, Body, UseGuards, Request, Get, HttpCode } from '@nestjs/common';
 import { UserService } from './user.service';
 import { SetupUserDto } from './dto/setup-user.dto';
 import { UpdateBuslySlotsDto } from './dto/update-busy-slots.dto';
@@ -31,5 +31,18 @@ export class UserController {
   @Get('student-profile')
   getStudentProfile(@Request() req) {
     return this.userService.getStudentProfile(req.user.id);
+  }
+
+  // Aktif dönemi sonlandır
+  @Post('end-term')
+  @HttpCode(200)
+  endTerm(@Request() req) {
+    return this.userService.endTerm(req.user.id);
+  }
+
+  // Yeni dönem başlat (aktif dönem varsa önce kapatılır)
+  @Post('start-term')
+  startTerm(@Request() req, @Body() body: { name?: string }) {
+    return this.userService.startTerm(req.user.id, body?.name);
   }
 }

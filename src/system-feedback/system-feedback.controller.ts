@@ -9,7 +9,7 @@ export class SystemFeedbackController {
 
   // Sistemin kullanıcıya ürettiği AI destekli haftalık mesajı getir
   @Get('message')
-  getMessage(@Request() req) {
-    return this.systemFeedbackService.getMessage(req.user.id);
+  getMessages(@Request() req) {
+    return this.systemFeedbackService.getMessages(req.user.id);
   }
 }
