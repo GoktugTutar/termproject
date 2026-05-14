@@ -110,6 +110,40 @@ function calcToPlace(
   return Math.min(remaining, dayRemaining, dayMaxPerSession, LESSON_CLASS_CAP[lessonClass]);
 }
 
+
+// Tercih edilen saate göre bir slotun pencere uzaklığını hesapla
+// Pencereler: morning(8-11), afternoon(12-15), evening(18-21), night(21-24)
+// Aradaki boşluklar (11-12, 15-18) en yakın pencereye atanır
+function windowDistance(startMin: number, preferredRange: { start: number; end: number }): number {
+  const windows = [
+    { start: 8 * 60, end: 11 * 60 },   // morning
+    { start: 12 * 60, end: 15 * 60 },  // afternoon
+    { start: 18 * 60, end: 21 * 60 },  // evening
+    { start: 21 * 60, end: 24 * 60 },  // night
+  ];
+
+  // Tercih edilen pencereyi bul
+  const preferredIdx = windows.findIndex(
+    (w) => w.start === preferredRange.start && w.end === preferredRange.end,
+  );
+  if (preferredIdx === -1) return 0; // bilinmeyen pencere → ceza yok
+
+  // Slotun hangi pencereye ait olduğunu bul
+  const slotIdx = windows.findIndex((w) => startMin >= w.start && startMin < w.end);
+  const effectiveIdx = slotIdx !== -1 ? slotIdx : (() => {
+    // Boşluktaysa (11-12 veya 15-18) en yakın pencereyi bul
+    let closest = 0;
+    let minDist = Infinity;
+    windows.forEach((w, i) => {
+      const d = Math.min(Math.abs(startMin - w.start), Math.abs(startMin - w.end));
+      if (d < minDist) { minDist = d; closest = i; }
+    });
+    return closest;
+  })();
+
+  return Math.abs(effectiveIdx - preferredIdx);
+}
+
 // Bir candidate slota puan ver
 // Yüksek puan = bu ders bu saate daha uygun
 function scoreCandidate(
@@ -140,31 +174,22 @@ function scoreCandidate(
   // AGIR ders tercih edilen saat dışındaysa ceza
   if (lessonClass === 'AGIR' && overlapRatio === 0) score -= 15;
 
-  // HAFIF ders tercih edilen saat dışındaysa hafif bonus
-  // (kolay dersler, yoğun saatleri zor dersler için boşaltır)
-  if (lessonClass === 'HAFIF' && overlapRatio === 0) score += 10;
+  // Tercih saatine uzaklık bazlı fallback cezası (örtüşme yoksa uygulanır)
+  if (overlapRatio === 0) {
+    const dist = windowDistance(startMin, preferredRange);
+    if (dist === 1) score -= 5;
+    else if (dist === 2) score -= 15;
+    else if (dist >= 3) score -= 25;
+  }
 
-  // AGIR ders gece saatinde (21:00+) ceza
-  if (lessonClass === 'AGIR' && startMin >= 21 * 60) score -= 35;
-
-  // AGIR ders sabah erken (08:00-12:00) bonus — peak hours
-  if (lessonClass === 'AGIR' && startMin < 12 * 60 && startMin >= 8 * 60) score += 10;
-
-  // HAFIF ders gece saatinde küçük bonus (boş saatleri doldurur)
-  if (lessonClass === 'HAFIF' && startMin >= 21 * 60) score += 10;
+  // HAFIF ders tercih saati dışında → peak saatleri zor derslere bırak
+  if (lessonClass === 'HAFIF' && overlapRatio === 0) score += 5;
 
   // Rahat günde zor ders → ekstra bonus
   if (lessonClass === 'AGIR' && dayClass === 'rahat') score += 15;
 
   // Yorucu günde zor ders → ceza
   if (lessonClass === 'AGIR' && dayClass === 'yorucu') score -= 20;
-
-  // Tercih edilen saatte zaten çok oturum var → yeni ders başka saate yönlendirilsin
-  const overlapStart2 = Math.max(startMin, preferredRange.start);
-  const overlapEnd2 = Math.min(endMin, preferredRange.end);
-  const isInPreferred = overlapStart2 < overlapEnd2;
-  if (isInPreferred && sessionsInPreferred >= 2) score -= 20; // 3+ oturum → güçlü ceza
-  else if (isInPreferred && sessionsInPreferred === 1) score -= 5; // 2. oturum → hafif ceza
 
   return score;
 }
@@ -208,10 +233,17 @@ function placeIntoWindows(
     score: scoreCandidate(c.startMin, c.endMin, lessonClass, difficulty, preferredRange, dayClass, sessionsInPreferred),
   }));
   
+  
+
   // En yüksek puanlı candidate'i seç
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0];
 
+  console.log(`  Lesson ${lessonId} on ${day.date.toLocaleDateString()} (sessionsInPreferred=${sessionsInPreferred}):`);
+scored.slice(0, 3).forEach(c => {
+  console.log(`    ${Math.floor(c.startMin/60)}:${String(c.startMin%60).padStart(2,'0')} score=${c.score}`);
+});
+console.log(`    → chose ${Math.floor(best.startMin/60)}:${String(best.startMin%60).padStart(2,'0')}`);
   // Seçilen slotu yerleştir ve pencereyi güncelle
   placed.push({
     lessonId,
