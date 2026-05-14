@@ -94,6 +94,25 @@ termprojectFull/
 │   │       └── time.util.ts            # Zaman yönetimi (prod/test modu)
 │   └── package.json
 └── termprojectui/                       # Flutter uygulaması
+    └── lib/
+        ├── main.dart
+        ├── theme.dart
+        ├── core/
+        │   ├── api_client.dart          # Tüm HTTP istekleri — tek merkezi API katmanı
+        │   └── app_time.dart            # Frontend saat yönetimi (test modu)
+        ├── models/
+        │   ├── lesson_model.dart
+        │   └── planner_model.dart
+        └── screens/
+            ├── auth_screen.dart
+            ├── main_scaffold.dart
+            ├── today_screen.dart
+            ├── week_screen.dart
+            ├── schedule_screen.dart
+            ├── lessons_screen.dart
+            ├── insights_screen.dart
+            ├── profile_screen.dart      # Tercihler, busy slots, dönem yönetimi
+            └── new_term_screen.dart     # Yeni dönem sihirbazı (ders ekleme akışı)
 ```
 
 ---
@@ -108,11 +127,23 @@ model User {
   preferredStudyTime StudyTime        @default(morning)
   studyStyle         StudyStyle       @default(normal)
   busySlots          UserBusySlot[]
+  terms              Term[]
   lessons            Lesson[]
   checklists         DailyChecklist[]
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
   profile            StudentProfile?
+}
+
+model Term {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id])
+  name      String?              // ör. "2026 Spring"
+  isActive  Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  lessons   Lesson[]
 }
 
 model StudentProfile {
@@ -168,6 +199,8 @@ model Lesson {
   id                  Int              @id @default(autoincrement())
   userId              Int
   user                User             @relation(fields: [userId], references: [id])
+  termId              Int?             // null = dönem öncesi eski kayıtlar
+  term                Term?            @relation(fields: [termId], references: [id])
   name                String
   difficulty          Int              // 1-5
   keyfiDelayCount     Int              @default(0)
@@ -262,12 +295,14 @@ model LessonFeedback {
 
 ### User
 
-| Method | Path                    | Açıklama                                      |
-|--------|-------------------------|-----------------------------------------------|
-| GET    | /user/me                | Giriş yapan kullanıcının profilini getir      |
-| POST   | /user/setup             | Kullanıcı tercihlerini kaydet (ilk kurulum)   |
-| PUT    | /user/busy-slots        | BusySlot'ları tamamen güncelle                |
-| GET    | /user/student-profile   | Dijital ikiz (StudentProfile) verisini getir  |
+| Method | Path                    | Açıklama                                                              |
+|--------|-------------------------|-----------------------------------------------------------------------|
+| GET    | /user/me                | Giriş yapan kullanıcının profilini getir                             |
+| POST   | /user/setup             | Kullanıcı tercihlerini kaydet (ilk kurulum)                          |
+| PUT    | /user/busy-slots        | BusySlot'ları tamamen güncelle                                        |
+| GET    | /user/student-profile   | Dijital ikiz (StudentProfile) verisini getir                         |
+| POST   | /user/end-term          | Aktif dönemi kapat (`isActive=false`, `endedAt` set edilir)          |
+| POST   | /user/start-term        | Aktif dönemi kapatıp yeni boş dönem başlat. Body: `{ name?: string }`|
 
 ### Planner
 
@@ -299,15 +334,18 @@ model LessonFeedback {
 
 ### Lesson
 
-| Method | Path                         | Açıklama              |
-|--------|------------------------------|-----------------------|
-| GET    | /lesson                      | Tüm dersleri listele  |
-| POST   | /lesson                      | Ders ekle             |
-| PUT    | /lesson/:id                  | Ders güncelle         |
-| DELETE | /lesson/:id                  | Ders sil              |
-| POST   | /lesson/:id/exam             | Sınav tarihi ekle     |
-| POST   | /lesson/:id/deadline         | Deadline / ödev ekle  |
-| DELETE | /lesson/:id/deadline/:did    | Deadline sil          |
+> `GET /lesson` ve `POST /lesson` yalnızca **aktif dönemin** (`Term.isActive=true`) derslerini döndürür/oluşturur.
+> Aktif dönem yoksa `termId=null` filtrelendiğinden boş liste döner.
+
+| Method | Path                         | Açıklama                                           |
+|--------|------------------------------|----------------------------------------------------|
+| GET    | /lesson                      | Aktif dönemin derslerini listele                   |
+| POST   | /lesson                      | Aktif döneme ders ekle                             |
+| PUT    | /lesson/:id                  | Ders güncelle                                      |
+| DELETE | /lesson/:id                  | Ders sil                                           |
+| POST   | /lesson/:id/exam             | Sınav tarihi ekle                                  |
+| POST   | /lesson/:id/deadline         | Deadline / ödev ekle                               |
+| DELETE | /lesson/:id/deadline/:did    | Deadline sil                                       |
 
 ### Debug (korumasız — sadece MODE=test)
 
@@ -813,3 +851,4 @@ Garanti: toplam her zaman hedef değere eşittir.
 6. **Tüm zaman operasyonları `getCurrentTime()` ile yapılır**, `new Date()` doğrudan kullanılmaz.
 7. **`JwtAuthGuard` tüm endpoint'lere uygulanır** — sadece `POST /auth/register` ve `POST /auth/login` korumasızdır. `/debug/*` endpoint'leri korumasız ama `MODE=test` kontrolü yapar.
 8. **`POST /debug/clock`** sadece `MODE=test` ortamında etki eder; `MODE=prod` ise isteği sessizce yok sayar.
+9. **Dönem (Term) mantığı:** `GET /lesson` ve `POST /lesson` her zaman aktif `Term` (`isActive=true`) üzerinden çalışır. Planlayıcı ve checklist yalnızca aktif dönemin derslerini görür. Eski dönemlerin verileri DB'de korunur, silinmez. `Lesson.termId=null` olan kayıtlar, dönem sistemi eklenmeden önce oluşturulmuş eski verilerdir.
