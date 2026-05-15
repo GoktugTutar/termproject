@@ -1,6 +1,8 @@
 # CLAUDE.md — Study Planner Projesi
 
-Bu dosya projenin tek yetkili referansıdır. Algoritma, veri modeli, API tasarımı ve dosya yapısı burada tanımlıdır.
+Bu dosya projenin tek yetkili referansıdır. Algoritma, veri modeli, API tasarımı ve dosya yapısı burada tanımlıdır. Dil ingilizcedir türkçe olan şeyler görülürse değiştirilmelidir.
+
+
 
 ---
 
