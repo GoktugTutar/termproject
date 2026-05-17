@@ -2,14 +2,10 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WeeklyFeedbackDto } from './dto/weekly-feedback.dto';
 import { getCurrentTime } from '../utils/time.util';
-import { PlannerService } from '../planner/planner.service';
 
 @Injectable()
 export class FeedbackService {
-  constructor(
-    private prisma: PrismaService,
-    private plannerService: PlannerService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   // Haftalık geri bildirim kaydet ve ders needsMoreTime değerlerini güncelle
   async saveWeeklyFeedback(userId: number, dto: WeeklyFeedbackDto) {
@@ -64,15 +60,6 @@ export class FeedbackService {
         data: { needsMoreTime: lf.needsMoreTime },
       });
     }
-
-    // Haftalık geri bildirim kaydedildikten sonra gelecek haftanın planını oluştur
-    const nextMonday = new Date(now);
-    nextMonday.setDate(now.getDate() + 1); // Pazar → Pazartesi
-    nextMonday.setHours(0, 0, 0, 0);
-    console.log(`[FEEDBACK] Triggering createWeeklyPlan for userId=${userId} forDate=${nextMonday.toISOString().substring(0, 10)}`);
-    this.plannerService.createWeeklyPlan(userId, nextMonday).catch((e) => {
-      console.error(`[FEEDBACK] createWeeklyPlan failed: ${e.message}`);
-    });
 
     return feedback;
   }

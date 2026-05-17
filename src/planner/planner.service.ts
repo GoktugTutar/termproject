@@ -254,13 +254,13 @@ export class PlannerService {
       });
     }
 
-    const weekBlocks = await this.getWeekBlocks(userId);
+    const weekBlocks = await this.getWeekBlocks(userId, now);
     return { ...weekBlocks, programZorlastu };
   }
 
   // Haftanın planlanan bloklarını getir
-  async getWeekBlocks(userId: number) {
-    const now = getCurrentTime();
+  async getWeekBlocks(userId: number, forDate?: Date) {
+    const now = forDate ?? getCurrentTime();
     const weekStart = this.getWeekStart(now);
 
     const blocks = await this.prisma.scheduledBlock.findMany({
