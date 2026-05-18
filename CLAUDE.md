@@ -551,13 +551,13 @@ U 8–14  → ORTA
 U > 14  → DÜŞÜK
 
 Delay etkisi:
-  totalDelayCount ≥ 3  → bir kademe yukarı
-  totalDelayCount 1–2  → 0.5 kademe yukarı
+  totalDelayCount ≥ 3  → bir kademe yukarı (KRITIK üzerinde çıkamaz)
 
   keyfiDelayCount > 0  → ders SLOTLU MOD'a alınır
     (aynı ders 3 gün üst üste yerleştirilemez)
 
 Aynı kademedeki dersler difficulty'ye göre sıralanır (zor ders önce).
+Kesin sıralama skoru: priorityScore(level) × 10 + difficulty
 ```
 
 ### ADIM 7 — Bilişsel Yük Dengesi
@@ -663,17 +663,16 @@ WHILE sonu → kalan > 0 olan dersler → notFitted kaydına ekle
 
   AGIR + tam örtüşme        →  +20 (ek bonus)
   AGIR + örtüşme yok        →  −15
-  HAFIF + örtüşme yok       →  +10 (zor derslere peak saat bırakılır)
+  HAFIF + örtüşme yok       →  +5 (zor derslere peak saat bırakılır)
 
-  AGIR + gece (≥21:00)      →  −35
-  AGIR + sabah (08:00–12:00)→  +10 (peak hours)
-  HAFIF + gece (≥21:00)     →  +10
+  Örtüşme yoksa → pencere uzaklığına göre ek ceza (windowDistance):
+    1 pencere uzakta  →  −5
+    2 pencere uzakta  →  −15
+    3+ pencere uzakta →  −25
+  (Pencere sırası: morning 08–11, afternoon 12–15, evening 18–21, night 21–24)
 
   AGIR + rahat gün          →  +15
   AGIR + yorucu gün         →  −20
-
-  Aynı günde preferred'da zaten 1 oturum var  →  −5  (2. oturum)
-  Aynı günde preferred'da zaten ≥2 oturum var →  −20 (3.+ oturum)
 
 ── PROGRAM ZORLAŞTI FEEDBACK ─────────────────────────────────────────
   programZorlastu = true ise:
