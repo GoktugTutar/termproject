@@ -25,11 +25,11 @@ export class UserController {
     return this.userService.setup(req.user.id, dto);
   }
 
-  // BusySlot'ları güncelle ve planı yeniden oluştur
+  // BusySlot'ları güncelle ve planı akıllıca yeniden oluştur
   @Put('busy-slots')
   async updateBusySlots(@Request() req, @Body() dto: UpdateBuslySlotsDto) {
     await this.userService.updateBusySlots(req.user.id, dto.busySlots);
-    return this.plannerService.createWeeklyPlan(req.user.id);
+    return this.plannerService.smartRebuild(req.user.id);
   }
 
   // Dijital ikiz profilini getir

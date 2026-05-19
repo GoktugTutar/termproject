@@ -89,7 +89,7 @@ export class PlannerService {
   }
 
   // Haftalık plan oluştur: tüm algoritma adımlarını çalıştır ve veritabanına kaydet
-  async createWeeklyPlan(userId: number, forDate?: Date) {
+  async createWeeklyPlan(userId: number, forDate?: Date, overrideAllocations?: Record<number, number>) {
     const now = forDate ?? getCurrentTime();
     const weekStart = this.getWeekStart(now);
     const weekEnd = new Date(weekStart);
@@ -160,11 +160,16 @@ export class PlannerService {
       weekEnd,
     );
 
-    // ADIM 4: Her ders için blok tahsisi hesapla
-    const allocations = step4CalculateX(user.lessons, effectiveBlocks);
+    // ADIM 4: Her ders için blok tahsisi hesapla (override varsa step4 atlanır)
     const lessonAllocations: Record<number, number> = {};
-    for (const alloc of allocations) {
-      lessonAllocations[alloc.lessonId] = alloc.effectiveBlocks;
+    if (overrideAllocations) {
+      Object.assign(lessonAllocations, overrideAllocations);
+      console.log(`[PLANNER] Using override allocations:`, overrideAllocations);
+    } else {
+      const allocations = step4CalculateX(user.lessons, effectiveBlocks);
+      for (const alloc of allocations) {
+        lessonAllocations[alloc.lessonId] = alloc.effectiveBlocks;
+      }
     }
 
     // ADIM 5: Blokları günlere dağıt ve session limitlerini belirle
@@ -258,6 +263,26 @@ export class PlannerService {
     return { ...weekBlocks, programZorlastu };
   }
 
+  // Akıllı yeniden hesaplama: plan yoksa veya Pazartesiyse tam plan, aksi halde kalan günleri hesapla
+  async smartRebuild(userId: number): Promise<any> {
+    const now = getCurrentTime();
+    const weekStart = this.getWeekStart(now);
+    const isMonday = now.getDay() === 1;
+
+    // Bu hafta için mevcut plan var mı kontrol et
+    const existingPlan = await this.prisma.scheduledBlock.findFirst({
+      where: { userId, weekStart },
+    });
+
+    if (!existingPlan || isMonday) {
+      console.log(`[PLANNER] smartRebuild → createWeeklyPlan (existingPlan=${!!existingPlan} isMonday=${isMonday})`);
+      return this.createWeeklyPlan(userId);
+    }
+
+    console.log(`[PLANNER] smartRebuild → recalculate (mid-week busy slot change)`);
+    return this.recalculate(userId);
+  }
+
   // Haftanın planlanan bloklarını getir
   async getWeekBlocks(userId: number, forDate?: Date) {
     const now = forDate ?? getCurrentTime();
@@ -276,50 +301,43 @@ export class PlannerService {
   async recalculate(userId: number) {
     const now = getCurrentTime();
     const weekStart = this.getWeekStart(now);
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
 
-    // Geçmiş günlerde tamamlanan blokları ders bazında topla
-    const completedItems = await this.prisma.checklistItem.findMany({
+    // Bugün ve sonrası için planlanmış blokları ders bazında topla
+    const futureBlocks = await this.prisma.scheduledBlock.findMany({
+      where: { userId, weekStart, date: { gte: todayStart } },
+    });
+
+    const allocatedByLesson: Record<number, number> = {};
+    for (const block of futureBlocks) {
+      allocatedByLesson[block.lessonId] = (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
+    }
+
+    // Bugün tamamlanan blokları ders bazında topla (bugün hem geçmiş hem gelecek olabilir)
+    const todayEnd = new Date(todayStart);
+    todayEnd.setHours(23, 59, 59, 999);
+    const todayItems = await this.prisma.checklistItem.findMany({
       where: {
-        checklist: {
-          userId,
-          date: { gte: weekStart, lte: now },
-        },
+        checklist: { userId, date: { gte: todayStart, lte: todayEnd } },
       },
     });
 
     const completedByLesson: Record<number, number> = {};
-    for (const item of completedItems) {
+    for (const item of todayItems) {
       completedByLesson[item.lessonId] = (completedByLesson[item.lessonId] ?? 0) + item.completedBlocks;
     }
 
-    // Mevcut hafta tahsislerini ders bazında topla
-    const existingBlocks = await this.prisma.scheduledBlock.findMany({
-      where: { userId, weekStart },
-    });
-
-    const allocatedByLesson: Record<number, number> = {};
-    for (const block of existingBlocks) {
-      allocatedByLesson[block.lessonId] = (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
-    }
-
-    // ADIM 9: Kalan blokları hesapla
+    // ADIM 9: Kalan blokları hesapla (sadece bugün ve sonrası)
     const remainingAllocations = step9Recalculate(allocatedByLesson, completedByLesson);
 
-    // Zorunlu delay kontrolü: sığmayan dersler için sayaçları güncelle
-    for (const [lessonIdStr, remaining] of Object.entries(remainingAllocations)) {
-      const lessonId = parseInt(lessonIdStr);
-      if (remaining > 0) {
-        await this.prisma.lesson.update({
-          where: { id: lessonId },
-          data: {
-            zorunluDelayCount: { increment: 1 },
-            zorunluMissedBlocks: { increment: remaining },
-          },
-        });
-      }
-    }
+    console.log(`[PLANNER] recalculate userId=${userId} futureAllocated:`, allocatedByLesson, 'todayCompleted:', completedByLesson, 'remaining:', remainingAllocations);
 
-    // Yeni planı oluştur
-    return this.createWeeklyPlan(userId);
+    // Zorunlu delay kontrolü: sığmayan dersler için sayaçları güncelle
+    // (sadece hafta sonu recalculate için geçerli — mid-week'te bu sayaçlar güncellenmez)
+    // Bu method şu an sadece mid-week için kullanılıyor, zorunluDelay güncellenmez
+
+    // Kalan blokları override olarak geçirerek yeni planı oluştur
+    return this.createWeeklyPlan(userId, now, remainingAllocations);
   }
 }
