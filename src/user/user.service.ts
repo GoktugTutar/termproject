@@ -1,11 +1,63 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { getCurrentTime } from '../utils/time.util';
-import { SetupUserDto } from './dto/setup-user.dto';
+import { BusySlotDto, SetupUserDto } from './dto/setup-user.dto';
+
+type NormalizedBusySlot = {
+  userId: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  fatigueLevel: number;
+  isRoutine: boolean;
+  date: Date | null;
+  iconKey: string;
+};
 
 @Injectable()
 export class UserService {
   constructor(private prisma: PrismaService) {}
+
+  private normalizeBusySlots(
+    userId: number,
+    busySlots: BusySlotDto[],
+  ): NormalizedBusySlot[] {
+    return busySlots.map((slot) => {
+      const isRoutine = slot.isRoutine ?? slot.date == null;
+      const date = isRoutine ? null : this.parseBusySlotDate(slot.date);
+
+      return {
+        userId,
+        dayOfWeek: slot.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        fatigueLevel: slot.fatigueLevel,
+        isRoutine,
+        date,
+        iconKey: slot.iconKey ?? 'energy',
+      };
+    });
+  }
+
+  private parseBusySlotDate(date?: string): Date {
+    if (!date) {
+      throw new BadRequestException(
+        'Tek haftalık busy time için date zorunlu.',
+      );
+    }
+
+    const dayOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    const parsed = dayOnly
+      ? new Date(Number(dayOnly[1]), Number(dayOnly[2]) - 1, Number(dayOnly[3]))
+      : new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Busy time tarihi geçersiz.');
+    }
+
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
 
   // Kullanıcı tercihlerini kaydet/güncelle
   async setup(userId: number, dto: SetupUserDto) {
@@ -21,7 +73,7 @@ export class UserService {
       await this.prisma.userBusySlot.deleteMany({ where: { userId } });
       if (busySlots.length > 0) {
         await this.prisma.userBusySlot.createMany({
-          data: busySlots.map((s) => ({ ...s, userId })),
+          data: this.normalizeBusySlots(userId, busySlots),
         });
       }
     }
@@ -30,11 +82,11 @@ export class UserService {
   }
 
   // BusySlot'ları tamamen güncelle (eski slotları sil, yenilerini ekle)
-  async updateBusySlots(userId: number, busySlots: any[]) {
+  async updateBusySlots(userId: number, busySlots: BusySlotDto[]) {
     await this.prisma.userBusySlot.deleteMany({ where: { userId } });
     if (busySlots.length > 0) {
       await this.prisma.userBusySlot.createMany({
-        data: busySlots.map((s) => ({ ...s, userId })),
+        data: this.normalizeBusySlots(userId, busySlots),
       });
     }
     return this.getProfile(userId);
@@ -72,22 +124,26 @@ export class UserService {
     since7.setDate(since7.getDate() - 7);
     const recent7 = checklists.filter((c) => c.date >= since7);
 
-    let totalPlanned = 0, totalCompleted = 0;
+    let totalPlanned = 0,
+      totalCompleted = 0;
     for (const c of recent7) {
       for (const item of c.items) {
         totalPlanned += item.plannedBlocks;
         totalCompleted += item.completedBlocks;
       }
     }
-    const completionRate7d = totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
+    const completionRate7d =
+      totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
 
     // ── 2. Rolling 7-day avg stress & fatigue ─────────────────────────────────
-    const avgStress7d = recent7.length > 0
-      ? recent7.reduce((s, c) => s + c.stressLevel, 0) / recent7.length
-      : 3;
-    const avgFatigue7d = recent7.length > 0
-      ? recent7.reduce((s, c) => s + c.fatigueLevel, 0) / recent7.length
-      : 3;
+    const avgStress7d =
+      recent7.length > 0
+        ? recent7.reduce((s, c) => s + c.stressLevel, 0) / recent7.length
+        : 3;
+    const avgFatigue7d =
+      recent7.length > 0
+        ? recent7.reduce((s, c) => s + c.fatigueLevel, 0) / recent7.length
+        : 3;
 
     // ── 3. Per-day-of-week completion rates (Mon=0..Sun=6) ───────────────────
     const dowPlanned = [0, 0, 0, 0, 0, 0, 0];
@@ -107,14 +163,18 @@ export class UserService {
     const fullSessions: number[] = [];
     for (const c of checklists) {
       for (const item of c.items) {
-        if (item.plannedBlocks > 0 && item.completedBlocks >= item.plannedBlocks) {
+        if (
+          item.plannedBlocks > 0 &&
+          item.completedBlocks >= item.plannedBlocks
+        ) {
           fullSessions.push(item.plannedBlocks);
         }
       }
     }
-    const sweetSpotBlocks = fullSessions.length > 0
-      ? fullSessions.reduce((a, b) => a + b, 0) / fullSessions.length
-      : 2;
+    const sweetSpotBlocks =
+      fullSessions.length > 0
+        ? fullSessions.reduce((a, b) => a + b, 0) / fullSessions.length
+        : 2;
 
     // ── 5. Avg stress near exam (<=7 days away) ───────────────────────────────
     const stressNearExamDays: number[] = [];
@@ -123,16 +183,19 @@ export class UserService {
       const nearExam = lessons.some((l) =>
         l.exams.some((e) => {
           const daysLeft = Math.ceil(
-            (new Date(e.examDate).getTime() - cDate.getTime()) / (1000 * 60 * 60 * 24),
+            (new Date(e.examDate).getTime() - cDate.getTime()) /
+              (1000 * 60 * 60 * 24),
           );
           return daysLeft >= 0 && daysLeft <= 7;
         }),
       );
       if (nearExam) stressNearExamDays.push(c.stressLevel);
     }
-    const stressNearExam = stressNearExamDays.length > 0
-      ? stressNearExamDays.reduce((a, b) => a + b, 0) / stressNearExamDays.length
-      : 3;
+    const stressNearExam =
+      stressNearExamDays.length > 0
+        ? stressNearExamDays.reduce((a, b) => a + b, 0) /
+          stressNearExamDays.length
+        : 3;
 
     // ── 6. Consistency score (last 14 days) ───────────────────────────────────
     const activeDays = checklists.filter((c) =>

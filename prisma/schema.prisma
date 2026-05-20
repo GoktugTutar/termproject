@@ -65,13 +65,16 @@ model StudentProfile {
 
 
 model UserBusySlot {
-  id           Int    @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   userId       Int
-  user         User   @relation(fields: [userId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
   dayOfWeek    Int
   startTime    String
   endTime      String
   fatigueLevel Int
+  isRoutine    Boolean  @default(true)
+  date         DateTime?
+  iconKey      String   @default("energy")
 }
 
 model Term {

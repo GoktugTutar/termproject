@@ -41,18 +41,33 @@ export class PlannerService {
   }
 
   private toLocalDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  private busySlotAppliesToDate(
+    slot: { dayOfWeek: number; isRoutine: boolean; date: Date | null },
+    date: Date,
+    dayOfWeek: number,
+  ): boolean {
+    if (slot.isRoutine) return slot.dayOfWeek === dayOfWeek;
+    if (!slot.date) return false;
+    return this.toLocalDateStr(slot.date) === this.toLocalDateStr(date);
+  }
 
   // Çakışan busy slotları birleştir (merge)
-  private mergeBusySlots(slots: Array<{ startTime: string; endTime: string }>): Array<{ start: number; end: number }> {
+  private mergeBusySlots(
+    slots: Array<{ startTime: string; endTime: string }>,
+  ): Array<{ start: number; end: number }> {
     if (slots.length === 0) return [];
 
     const intervals = slots
-      .map((s) => ({ start: this.timeToMin(s.startTime), end: this.timeToMin(s.endTime) }))
+      .map((s) => ({
+        start: this.timeToMin(s.startTime),
+        end: this.timeToMin(s.endTime),
+      }))
       .sort((a, b) => a.start - b.start);
 
     const merged = [{ ...intervals[0] }];
@@ -68,9 +83,11 @@ export class PlannerService {
   }
 
   // Bir gün için 08:00-24:00 arasındaki boş zaman dilimlerini hesapla
-  private getFreeWindows(mergedBusy: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
-    const dayStart = 8 * 60;  // 08:00
-    const dayEnd = 24 * 60;   // 24:00 (gece yarısı)
+  private getFreeWindows(
+    mergedBusy: Array<{ start: number; end: number }>,
+  ): Array<{ start: number; end: number }> {
+    const dayStart = 8 * 60; // 08:00
+    const dayEnd = 24 * 60; // 24:00 (gece yarısı)
     const free: Array<{ start: number; end: number }> = [];
     let current = dayStart;
 
@@ -89,7 +106,11 @@ export class PlannerService {
   }
 
   // Haftalık plan oluştur: tüm algoritma adımlarını çalıştır ve veritabanına kaydet
-  async createWeeklyPlan(userId: number, forDate?: Date, overrideAllocations?: Record<number, number>) {
+  async createWeeklyPlan(
+    userId: number,
+    forDate?: Date,
+    overrideAllocations?: Record<number, number>,
+  ) {
     const now = forDate ?? getCurrentTime();
     const weekStart = this.getWeekStart(now);
     const weekEnd = new Date(weekStart);
@@ -104,7 +125,9 @@ export class PlannerService {
         lessons: { include: { exams: true, deadlines: true } },
         weeklyFeedbacks: { orderBy: { weekStart: 'desc' }, take: 1 },
         checklists: {
-          where: { date: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
+          where: {
+            date: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+          },
           include: { items: true },
         },
       },
@@ -115,18 +138,28 @@ export class PlannerService {
     // Son 7 günün tamamlanma oranını hesapla (ADIM 0 için)
     const recentChecklists = user.checklists;
     const totalPlanned = recentChecklists.reduce(
-      (sum, c) => sum + c.items.reduce((s, i) => s + i.plannedBlocks, 0), 0
+      (sum, c) => sum + c.items.reduce((s, i) => s + i.plannedBlocks, 0),
+      0,
     );
     const totalCompleted = recentChecklists.reduce(
-      (sum, c) => sum + c.items.reduce((s, i) => s + i.completedBlocks, 0), 0
+      (sum, c) => sum + c.items.reduce((s, i) => s + i.completedBlocks, 0),
+      0,
     );
 
     const lastFeedback = user.weeklyFeedbacks[0] ?? null;
 
     // ADIM 0: Tükenmişlik sinyali → max blok miktarını güncelle
-    const defaultMaxBlocks = user.studyStyle === 'deep_focus' ? 4
-      : user.studyStyle === 'distributed' ? 2 : 3;
-    const { maxBlocksPerSession } = step0Burnout(totalCompleted, totalPlanned, defaultMaxBlocks);
+    const defaultMaxBlocks =
+      user.studyStyle === 'deep_focus'
+        ? 4
+        : user.studyStyle === 'distributed'
+          ? 2
+          : 3;
+    const { maxBlocksPerSession } = step0Burnout(
+      totalCompleted,
+      totalPlanned,
+      defaultMaxBlocks,
+    );
 
     // ADIM 1: Haftalık geri bildirim çarpanı
     const multiplier = step1Multiplier(lastFeedback?.weekloadFeedback ?? null);
@@ -135,12 +168,22 @@ export class PlannerService {
     const effectiveBlocks = step2Pool(multiplier);
 
     // ── LOG: Planner inputs ─────────────────────────────────────────────────
-    console.log(`[PLANNER] createWeeklyPlan userId=${userId} weekStart=${weekStart.toISOString().substring(0, 10)}`);
-    console.log(`  studyStyle=${user.studyStyle} defaultMaxBlocks=${defaultMaxBlocks} maxBlocksPerSession=${maxBlocksPerSession}`);
-    console.log(`  completionRate: ${totalCompleted}/${totalPlanned} blocks completed in last 7 days`);
-    console.log(`  lastFeedback weekload=${lastFeedback?.weekloadFeedback ?? 'none'} → multiplier=${multiplier}`);
+    console.log(
+      `[PLANNER] createWeeklyPlan userId=${userId} weekStart=${weekStart.toISOString().substring(0, 10)}`,
+    );
+    console.log(
+      `  studyStyle=${user.studyStyle} defaultMaxBlocks=${defaultMaxBlocks} maxBlocksPerSession=${maxBlocksPerSession}`,
+    );
+    console.log(
+      `  completionRate: ${totalCompleted}/${totalPlanned} blocks completed in last 7 days`,
+    );
+    console.log(
+      `  lastFeedback weekload=${lastFeedback?.weekloadFeedback ?? 'none'} → multiplier=${multiplier}`,
+    );
     console.log(`  effectiveBlocks=${effectiveBlocks}`);
-    console.log(`  lessons: ${user.lessons.map(l => `[${l.id}] ${l.name} diff=${l.difficulty} needsMoreTime=${l.needsMoreTime} keyfiDelay=${l.keyfiDelayCount} zorunluDelay=${l.zorunluDelayCount}`).join(', ')}`);
+    console.log(
+      `  lessons: ${user.lessons.map((l) => `[${l.id}] ${l.name} diff=${l.difficulty} needsMoreTime=${l.needsMoreTime} keyfiDelay=${l.keyfiDelayCount} zorunluDelay=${l.zorunluDelayCount}`).join(', ')}`,
+    );
     // ────────────────────────────────────────────────────────────────────────
 
     // Hafta günlerini (Pazartesi-Pazar) oluştur
@@ -148,7 +191,9 @@ export class PlannerService {
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
       const dayOfWeek = i + 1; // 1=Pzt, 7=Paz
-      const dayBusySlots = user.busySlots.filter((s) => s.dayOfWeek === dayOfWeek);
+      const dayBusySlots = user.busySlots.filter((s) =>
+        this.busySlotAppliesToDate(s, date, dayOfWeek),
+      );
       return { date, dayOfWeek, busySlots: dayBusySlots };
     });
 
@@ -186,7 +231,9 @@ export class PlannerService {
     // ADIM 7: Bilişsel yük dengesini uygula
     const lessonMap = new Map(user.lessons.map((l) => [l.id, l]));
     // slottedMode bilgisini ayrı bir map'te tut (step7CognitiveLoad bu alanı döndürmez)
-    const slottedModeMap = new Map(priorities.map((p) => [p.lessonId, p.slottedMode]));
+    const slottedModeMap = new Map(
+      priorities.map((p) => [p.lessonId, p.slottedMode]),
+    );
     const orderedWithDifficulty = priorities.map((p) => ({
       lessonId: p.lessonId,
       difficulty: lessonMap.get(p.lessonId)?.difficulty ?? 3,
@@ -194,19 +241,28 @@ export class PlannerService {
     }));
     const cognitiveOrdered = step7CognitiveLoad(orderedWithDifficulty);
 
-
     // Her gün için boş zaman pencerelerini oluştur
-    const freeWindows: Record<string, Array<{ start: number; end: number }>> = {};
+    const freeWindows: Record<
+      string,
+      Array<{ start: number; end: number }>
+    > = {};
     for (const day of weekDays) {
       const dateStr = this.toLocalDateStr(day.date);
       const mergedBusy = this.mergeBusySlots(
-        day.busySlots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
+        day.busySlots.map((s) => ({
+          startTime: s.startTime,
+          endTime: s.endTime,
+        })),
       );
       freeWindows[dateStr] = this.getFreeWindows(mergedBusy);
     }
 
     // ADIM 7.5: Tekrar bloklarını önce yerleştir
-    const { placed: reviewPlaced, updatedAllocations, updatedFreeWindows } = step7_5PlaceReview(
+    const {
+      placed: reviewPlaced,
+      updatedAllocations,
+      updatedFreeWindows,
+    } = step7_5PlaceReview(
       reviewBlocks,
       freeWindows,
       user.preferredStudyTime,
@@ -214,7 +270,11 @@ export class PlannerService {
     );
 
     // ADIM 8: Dersleri gün/ders sınıfı eşleşmesiyle yerleştir
-    const { placed: lessonPlaced, notFitted, programZorlastu } = step8Placement(
+    const {
+      placed: lessonPlaced,
+      notFitted,
+      programZorlastu,
+    } = step8Placement(
       cognitiveOrdered.map((l) => ({
         lessonId: l.lessonId,
         slottedMode: slottedModeMap.get(l.lessonId) ?? false,
@@ -227,9 +287,10 @@ export class PlannerService {
       user.preferredStudyTime,
     );
 
-
     // ── LOG: Placement results ─────────────────────────────────────────────
-    console.log(`[PLANNER] placement results: ${lessonPlaced.length} lesson blocks + ${reviewPlaced.length} review blocks placed`);
+    console.log(
+      `[PLANNER] placement results: ${lessonPlaced.length} lesson blocks + ${reviewPlaced.length} review blocks placed`,
+    );
     if (Object.keys(notFitted).length > 0) {
       console.log(`  NOT FITTED:`, notFitted);
     }
@@ -252,7 +313,9 @@ export class PlannerService {
           date: block.date,
           startTime: this.minToTime(block.startMin),
           endTime: this.minToTime(block.endMin),
-          blockCount: block.blockCount ?? Math.round((block.endMin - block.startMin) / 30),
+          blockCount:
+            block.blockCount ??
+            Math.round((block.endMin - block.startMin) / 30),
           isReview: block.isReview,
           weekStart,
         },
@@ -275,11 +338,15 @@ export class PlannerService {
     });
 
     if (!existingPlan || isMonday) {
-      console.log(`[PLANNER] smartRebuild → createWeeklyPlan (existingPlan=${!!existingPlan} isMonday=${isMonday})`);
+      console.log(
+        `[PLANNER] smartRebuild → createWeeklyPlan (existingPlan=${!!existingPlan} isMonday=${isMonday})`,
+      );
       return this.createWeeklyPlan(userId);
     }
 
-    console.log(`[PLANNER] smartRebuild → recalculate (mid-week busy slot change)`);
+    console.log(
+      `[PLANNER] smartRebuild → recalculate (mid-week busy slot change)`,
+    );
     return this.recalculate(userId);
   }
 
@@ -311,7 +378,8 @@ export class PlannerService {
 
     const allocatedByLesson: Record<number, number> = {};
     for (const block of futureBlocks) {
-      allocatedByLesson[block.lessonId] = (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
+      allocatedByLesson[block.lessonId] =
+        (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
     }
 
     // Bugün tamamlanan blokları ders bazında topla (bugün hem geçmiş hem gelecek olabilir)
@@ -325,13 +393,24 @@ export class PlannerService {
 
     const completedByLesson: Record<number, number> = {};
     for (const item of todayItems) {
-      completedByLesson[item.lessonId] = (completedByLesson[item.lessonId] ?? 0) + item.completedBlocks;
+      completedByLesson[item.lessonId] =
+        (completedByLesson[item.lessonId] ?? 0) + item.completedBlocks;
     }
 
     // ADIM 9: Kalan blokları hesapla (sadece bugün ve sonrası)
-    const remainingAllocations = step9Recalculate(allocatedByLesson, completedByLesson);
+    const remainingAllocations = step9Recalculate(
+      allocatedByLesson,
+      completedByLesson,
+    );
 
-    console.log(`[PLANNER] recalculate userId=${userId} futureAllocated:`, allocatedByLesson, 'todayCompleted:', completedByLesson, 'remaining:', remainingAllocations);
+    console.log(
+      `[PLANNER] recalculate userId=${userId} futureAllocated:`,
+      allocatedByLesson,
+      'todayCompleted:',
+      completedByLesson,
+      'remaining:',
+      remainingAllocations,
+    );
 
     // Zorunlu delay kontrolü: sığmayan dersler için sayaçları güncelle
     // (sadece hafta sonu recalculate için geçerli — mid-week'te bu sayaçlar güncellenmez)
