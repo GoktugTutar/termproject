@@ -109,47 +109,48 @@ export class ChecklistService {
       });
     }
 
-    // Her ders için item'ı güncelle veya oluştur
-    for (const item of dto.items) {
-      const existing = await this.prisma.checklistItem.findFirst({
-        where: { checklistId: checklist.id, lessonId: item.lessonId },
-      });
+    // Her ders için item'ı güncelle veya oluştur (paralel)
+    await Promise.all(
+      dto.items.map(async (item) => {
+        const existing = await this.prisma.checklistItem.findFirst({
+          where: { checklistId: checklist.id, lessonId: item.lessonId },
+        });
 
-      const delayed = item.completedBlocks < item.plannedBlocks;
-      const delayDelta = existing
-        ? delayed === existing.delayed
-          ? 0
+        const delayed = item.completedBlocks < item.plannedBlocks;
+        const delayDelta = existing
+          ? delayed === existing.delayed
+            ? 0
+            : delayed
+              ? 1
+              : -1
           : delayed
             ? 1
-            : -1
-        : delayed
-          ? 1
-          : 0;
+            : 0;
 
-      if (existing) {
-        await this.prisma.checklistItem.update({
-          where: { id: existing.id },
-          data: {
-            plannedBlocks: item.plannedBlocks,
-            completedBlocks: item.completedBlocks,
-            delayed,
-          },
-        });
-      } else {
-        await this.prisma.checklistItem.create({
-          data: {
-            checklistId: checklist.id,
-            lessonId: item.lessonId,
-            plannedBlocks: item.plannedBlocks,
-            completedBlocks: item.completedBlocks,
-            delayed,
-          },
-        });
-      }
+        if (existing) {
+          await this.prisma.checklistItem.update({
+            where: { id: existing.id },
+            data: {
+              plannedBlocks: item.plannedBlocks,
+              completedBlocks: item.completedBlocks,
+              delayed,
+            },
+          });
+        } else {
+          await this.prisma.checklistItem.create({
+            data: {
+              checklistId: checklist.id,
+              lessonId: item.lessonId,
+              plannedBlocks: item.plannedBlocks,
+              completedBlocks: item.completedBlocks,
+              delayed,
+            },
+          });
+        }
 
-      // Keyfi erteleme yalnızca submit edilmiş ve eksik kalmış derslerden gelir.
-      await this.adjustLessonDelayCount(item.lessonId, delayDelta);
-    }
+        await this.adjustLessonDelayCount(item.lessonId, delayDelta);
+      }),
+    );
 
     // Dijital ikiz profilini güncelle
     this.userService.updateStudentProfile(userId).catch(() => {}); // fire-and-forget

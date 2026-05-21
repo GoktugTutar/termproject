@@ -38,3 +38,6 @@ temp/
 .vscode/
 *.swp
 *.swo
+
+#***
+.clock-override
