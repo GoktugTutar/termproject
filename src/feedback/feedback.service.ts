@@ -177,6 +177,16 @@ export class FeedbackService {
     return messages;
   }
 
+  // Bu hafta için weekly feedback gönderilip gönderilmediğini kontrol et
+  async getWeeklyStatus(userId: number): Promise<{ submitted: boolean }> {
+    const now = getCurrentTime();
+    const weekStart = this.getWeekStart(now);
+    const existing = await this.prisma.weeklyFeedback.findFirst({
+      where: { userId, weekStart },
+    });
+    return { submitted: existing !== null };
+  }
+
   // Haftanın başlangıcını (Pazartesi) hesapla
   private getWeekStart(date: Date): Date {
     const d = new Date(date);

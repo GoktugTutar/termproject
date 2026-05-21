@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../user/user.service';
 import { SubmitChecklistDto } from './dto/submit-checklist.dto';
 import { getCurrentTime } from '../utils/time.util';
+import { isFirstWeekDate } from '../utils/first-week.util';
 
 @Injectable()
 export class ChecklistService {
@@ -75,6 +76,14 @@ export class ChecklistService {
       ? this.parseLocalDate(dto.date)
       : this.startOfLocalDay(getCurrentTime());
     const tomorrow = this.nextLocalDay(today);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstWeekStartedAt: true },
+    });
+    if (isFirstWeekDate(user?.firstWeekStartedAt, today)) {
+      throw new BadRequestException('İlk hafta checklist kapalı.');
+    }
 
     // Bugüne ait checklist'i bul veya oluştur
     let checklist = await this.prisma.dailyChecklist.findFirst({
@@ -152,8 +161,11 @@ export class ChecklistService {
   // hasBlocks (o gün planlanmış blok var mı) ve hasChecklist (checklist girildi mi)
   async getHistory(userId: number, days: number) {
     const today = this.startOfLocalDay(getCurrentTime());
-    const result: { date: string; hasBlocks: boolean; hasChecklist: boolean }[] =
-      [];
+    const result: {
+      date: string;
+      hasBlocks: boolean;
+      hasChecklist: boolean;
+    }[] = [];
 
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today);
@@ -208,6 +220,24 @@ export class ChecklistService {
   // → geçen hafta eksik checklistler yeni haftayı engellemez.
   async getStatus(userId: number, dateStr: string) {
     const date = this.parseLocalDate(dateStr);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstWeekStartedAt: true },
+    });
+
+    if (isFirstWeekDate(user?.firstWeekStartedAt, date)) {
+      return {
+        date: this.toLocalDateStr(date),
+        blocked: false,
+        missingDates: [],
+        checklist: null,
+        checklistDisabled: true,
+        disabledReason: 'first_week',
+        message:
+          'İlk hafta adaptasyon haftası. Programın hazır; bu hafta checklist sunulmayacak.',
+      };
+    }
+
     const weekStart = this.getWeekStart(date);
     const missingDates: string[] = [];
 
@@ -227,6 +257,7 @@ export class ChecklistService {
       blocked: missingDates.length > 0,
       missingDates,
       checklist: await this.getByDate(userId, this.toLocalDateStr(date)),
+      checklistDisabled: false,
     };
   }
 }

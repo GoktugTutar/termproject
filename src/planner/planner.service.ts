@@ -13,6 +13,10 @@ import { step7_5PlaceReview } from './algorithm/step7_5-place-review';
 import { step8Placement } from './algorithm/step8-placement';
 import { step9Recalculate } from './algorithm/step9-recalculate';
 
+type CreateWeeklyPlanOptions = {
+  fromDate?: Date;
+};
+
 @Injectable()
 export class PlannerService {
   constructor(private prisma: PrismaService) {}
@@ -45,6 +49,17 @@ export class PlannerService {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  private startOfLocalDay(date: Date): Date {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private parseLocalDate(dateStr: string): Date {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return this.startOfLocalDay(new Date(year, month - 1, day));
   }
 
   private busySlotAppliesToDate(
@@ -110,6 +125,7 @@ export class PlannerService {
     userId: number,
     forDate?: Date,
     overrideAllocations?: Record<number, number>,
+    options: CreateWeeklyPlanOptions = {},
   ) {
     const now = forDate ?? getCurrentTime();
     const weekStart = this.getWeekStart(now);
@@ -134,6 +150,10 @@ export class PlannerService {
     });
 
     if (!user) throw new Error('Kullanıcı bulunamadı');
+
+    const partialStart = options.fromDate
+      ? this.startOfLocalDay(options.fromDate)
+      : null;
 
     // Son 7 günün tamamlanma oranını hesapla (ADIM 0 için)
     const recentChecklists = user.checklists;
@@ -196,6 +216,9 @@ export class PlannerService {
       );
       return { date, dayOfWeek, busySlots: dayBusySlots };
     });
+    const planningDays = partialStart
+      ? weekDays.filter((day) => day.date.getTime() >= partialStart.getTime())
+      : weekDays;
 
     // ADIM 3: Sınav tekrar bloklarını ayır
     const { reviewBlocks, reservedByLesson } = step3ReviewBlocks(
@@ -220,7 +243,7 @@ export class PlannerService {
     // ADIM 5: Blokları günlere dağıt ve session limitlerini belirle
     const dayConfigs = step5DayDistribution(
       effectiveBlocks,
-      weekDays,
+      planningDays,
       user.studyStyle,
       maxBlocksPerSession,
     );
@@ -246,7 +269,7 @@ export class PlannerService {
       string,
       Array<{ start: number; end: number }>
     > = {};
-    for (const day of weekDays) {
+    for (const day of planningDays) {
       const dateStr = this.toLocalDateStr(day.date);
       const mergedBusy = this.mergeBusySlots(
         day.busySlots.map((s) => ({
@@ -299,9 +322,27 @@ export class PlannerService {
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    // Mevcut hafta bloklarını sil ve yenilerini veritabanına kaydet
+    // Sığmayan dersler için zorunluDelayCount ve zorunluMissedBlocks güncelle.
+    // Sadece tam haftalık plan oluşturmada (overrideAllocations=null) güncellenir;
+    // recalculate hafta içinde birden çok kez çağrılabilir, tekrar artış olmaması için
+    // oradan geldiğinde (override var) sayaçlara dokunmayız — bildirim yine döner.
+    if (!overrideAllocations) {
+      for (const [lessonIdStr, missedBlocks] of Object.entries(notFitted)) {
+        await this.prisma.lesson.update({
+          where: { id: Number(lessonIdStr) },
+          data: {
+            zorunluDelayCount: { increment: 1 },
+            zorunluMissedBlocks: { increment: missedBlocks as number },
+          },
+        });
+      }
+    }
+
+    // Tam plan eski haftayı değiştirir; recalculate sadece başlangıç ve sonrasını yeniler.
     await this.prisma.scheduledBlock.deleteMany({
-      where: { userId, weekStart },
+      where: partialStart
+        ? { userId, weekStart, date: { gte: partialStart } }
+        : { userId, weekStart },
     });
 
     const allBlocks = [...reviewPlaced, ...lessonPlaced];
@@ -323,31 +364,7 @@ export class PlannerService {
     }
 
     const weekBlocks = await this.getWeekBlocks(userId, now);
-    return { ...weekBlocks, programZorlastu };
-  }
-
-  // Akıllı yeniden hesaplama: plan yoksa veya Pazartesiyse tam plan, aksi halde kalan günleri hesapla
-  async smartRebuild(userId: number): Promise<any> {
-    const now = getCurrentTime();
-    const weekStart = this.getWeekStart(now);
-    const isMonday = now.getDay() === 1;
-
-    // Bu hafta için mevcut plan var mı kontrol et
-    const existingPlan = await this.prisma.scheduledBlock.findFirst({
-      where: { userId, weekStart },
-    });
-
-    if (!existingPlan || isMonday) {
-      console.log(
-        `[PLANNER] smartRebuild → createWeeklyPlan (existingPlan=${!!existingPlan} isMonday=${isMonday})`,
-      );
-      return this.createWeeklyPlan(userId);
-    }
-
-    console.log(
-      `[PLANNER] smartRebuild → recalculate (mid-week busy slot change)`,
-    );
-    return this.recalculate(userId);
+    return { ...weekBlocks, programZorlastu, notFitted };
   }
 
   // Haftanın planlanan bloklarını getir
@@ -365,15 +382,21 @@ export class PlannerService {
   }
 
   // BusySlot değişikliğinde kalan günleri yeniden hesapla (ADIM 9)
-  async recalculate(userId: number) {
+  async recalculate(userId: number, fromDate?: string) {
     const now = getCurrentTime();
     const weekStart = this.getWeekStart(now);
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = this.startOfLocalDay(now);
+    const requestedStart = fromDate
+      ? this.parseLocalDate(fromDate)
+      : todayStart;
+    const recalcStart =
+      requestedStart.getTime() > todayStart.getTime()
+        ? requestedStart
+        : todayStart;
 
-    // Bugün ve sonrası için planlanmış blokları ders bazında topla
+    // Recalculate başlangıcı ve sonrası için planlanmış blokları ders bazında topla
     const futureBlocks = await this.prisma.scheduledBlock.findMany({
-      where: { userId, weekStart, date: { gte: todayStart } },
+      where: { userId, weekStart, date: { gte: recalcStart } },
     });
 
     const allocatedByLesson: Record<number, number> = {};
@@ -382,22 +405,20 @@ export class PlannerService {
         (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
     }
 
-    // Bugün tamamlanan blokları ders bazında topla (bugün hem geçmiş hem gelecek olabilir)
-    const todayEnd = new Date(todayStart);
-    todayEnd.setHours(23, 59, 59, 999);
-    const todayItems = await this.prisma.checklistItem.findMany({
+    // Aynı hafta içinde recalculate başlangıcından önce tamamlanan blokları ders bazında topla
+    const completedItems = await this.prisma.checklistItem.findMany({
       where: {
-        checklist: { userId, date: { gte: todayStart, lte: todayEnd } },
+        checklist: { userId, date: { gte: weekStart, lt: recalcStart } },
       },
     });
 
     const completedByLesson: Record<number, number> = {};
-    for (const item of todayItems) {
+    for (const item of completedItems) {
       completedByLesson[item.lessonId] =
         (completedByLesson[item.lessonId] ?? 0) + item.completedBlocks;
     }
 
-    // ADIM 9: Kalan blokları hesapla (sadece bugün ve sonrası)
+    // ADIM 9: Kalan blokları hesapla (sadece recalculate başlangıcı ve sonrası)
     const remainingAllocations = step9Recalculate(
       allocatedByLesson,
       completedByLesson,
@@ -406,17 +427,19 @@ export class PlannerService {
     console.log(
       `[PLANNER] recalculate userId=${userId} futureAllocated:`,
       allocatedByLesson,
-      'todayCompleted:',
+      'completedBeforeRecalcStart:',
       completedByLesson,
+      'recalcStart:',
+      this.toLocalDateStr(recalcStart),
       'remaining:',
       remainingAllocations,
     );
 
-    // Zorunlu delay kontrolü: sığmayan dersler için sayaçları güncelle
-    // (sadece hafta sonu recalculate için geçerli — mid-week'te bu sayaçlar güncellenmez)
-    // Bu method şu an sadece mid-week için kullanılıyor, zorunluDelay güncellenmez
-
-    // Kalan blokları override olarak geçirerek yeni planı oluştur
-    return this.createWeeklyPlan(userId, now, remainingAllocations);
+    // Kalan blokları override olarak geçirerek yeni planı oluştur.
+    // notFitted dersler createWeeklyPlan'dan response olarak döner (Flutter bildirir).
+    // zorunluDelayCount bu çağrıda güncellenmez (overrideAllocations dolu olduğundan).
+    return this.createWeeklyPlan(userId, now, remainingAllocations, {
+      fromDate: recalcStart,
+    });
   }
 }

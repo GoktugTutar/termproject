@@ -1,4 +1,11 @@
-import { Controller, Post, Get, UseGuards, Request } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { PlannerService } from './planner.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -15,8 +22,8 @@ export class PlannerController {
 
   // BusySlot değişikliğinde yeniden hesapla
   @Post('recalculate')
-  recalculate(@Request() req) {
-    return this.plannerService.recalculate(req.user.id);
+  recalculate(@Request() req, @Body() body?: { fromDate?: string }) {
+    return this.plannerService.recalculate(req.user.id, body?.fromDate);
   }
 
   // Haftanın bloklarını getir

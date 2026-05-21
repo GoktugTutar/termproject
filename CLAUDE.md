@@ -78,6 +78,11 @@ termprojectFull/
 │   │   │   ├── system-feedback.controller.ts
 │   │   │   ├── system-feedback.service.ts
 │   │   │   └── ai-prompt.ts
+│   │   ├── insight/                    # Insight engine — pattern tespiti + plan override
+│   │   │   ├── insight.module.ts
+│   │   │   ├── insight.controller.ts
+│   │   │   ├── insight.service.ts
+│   │   │   └── insight-engine.ts       # Tüm 6.1-6.22 + placement analytics kuralları
 │   │   ├── lesson/
 │   │   │   ├── lesson.module.ts
 │   │   │   ├── lesson.controller.ts
@@ -126,6 +131,7 @@ model User {
   id                 Int              @id @default(autoincrement())
   email              String           @unique
   passwordHash       String
+  firstWeekStartedAt DateTime?        @default(now())
   preferredStudyTime StudyTime        @default(morning)
   studyStyle         StudyStyle       @default(normal)
   busySlots          UserBusySlot[]
@@ -135,6 +141,7 @@ model User {
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
   profile            StudentProfile?
+  insights           UserInsight[]
 }
 
 model Term {
@@ -172,6 +179,21 @@ model StudentProfile {
   consistencyScore   Float    @default(0)
 
   totalSubmissions   Int      @default(0)
+
+  // Placement quality analytics (placement-score.md)
+  avgQualityRatio7d        Float   @default(0)
+  // JSON: { "lessonId": { avgRatio, avgL1, avgL2, avgL3, avgL4, sampleCount } }
+  lessonQualityScores      String  @default("{}")
+  // JSON: { "busySlotId": { withSlot, withoutSlot, delta } }
+  busySlotImpact           String  @default("{}")
+  // JSON: { "insightType_lessonId": { before, after, appliedAt } }
+  insightOverrideEffects   String  @default("{}")
+  // JSON: [{ weekStart, avgMaxPossible }] — son 4 hafta
+  maxPossibleTrend         String  @default("[]")
+
+  // Productivity pattern (insight 6.18)
+  // JSON: { "lessonId": { "morning": avgRating, "afternoon": ..., ... } }
+  lessonProductivityByWindow String @default("{}")
 }
 
 enum StudyTime {
@@ -188,30 +210,36 @@ enum StudyStyle {
 }
 
 model UserBusySlot {
-  id           Int     @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   userId       Int
-  user         User    @relation(fields: [userId], references: [id])
-  dayOfWeek    Int     // 1=Pazartesi … 7=Pazar
-  startTime    String  // "HH:MM"
-  endTime      String  // "HH:MM"
-  fatigueLevel Int     // 1-5
+  user         User     @relation(fields: [userId], references: [id])
+  dayOfWeek    Int      // 1=Pazartesi … 7=Pazar
+  startTime    String   // "HH:MM"
+  endTime      String   // "HH:MM"
+  fatigueLevel Int      // 1-5
+  isRoutine    Boolean  @default(true)
+  date         DateTime?
+  iconKey      String   @default("energy")
 }
 
 model Lesson {
-  id                  Int              @id @default(autoincrement())
+  id                  Int                @id @default(autoincrement())
   userId              Int
-  user                User             @relation(fields: [userId], references: [id])
-  termId              Int?             // null = dönem öncesi eski kayıtlar
-  term                Term?            @relation(fields: [termId], references: [id])
+  user                User               @relation(fields: [userId], references: [id])
+  termId              Int?               // null = dönem öncesi eski kayıtlar
+  term                Term?              @relation(fields: [termId], references: [id])
   name                String
-  difficulty          Int              // 1-5
-  keyfiDelayCount     Int              @default(0)
-  zorunluDelayCount   Int              @default(0)
-  zorunluMissedBlocks Int              @default(0)
-  needsMoreTime       Int              @default(0)  // -1 | 0 | +1
+  difficulty          Int                // 1-5
+  keyfiDelayCount     Int                @default(0)
+  zorunluDelayCount   Int                @default(0)
+  zorunluMissedBlocks Int                @default(0)
+  needsMoreTime       Int                @default(0)  // -1 | 0 | +1
+  targetGrade         Float?             // hedeflenen sınav notu (0-100)
   exams               LessonExam[]
   deadlines           LessonDeadline[]
   scheduledBlocks     ScheduledBlock[]
+  grades              LessonGrade[]
+  planOverride        LessonPlanOverride?
 }
 
 model LessonExam {
@@ -230,18 +258,28 @@ model LessonDeadline {
 }
 
 model ScheduledBlock {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id])
-  lessonId   Int
-  lesson     Lesson   @relation(fields: [lessonId], references: [id])
-  date       DateTime
-  startTime  String   // "HH:MM"
-  endTime    String   // "HH:MM"
-  blockCount Int
-  isReview   Boolean  @default(false)
-  completed  Boolean  @default(false)
-  weekStart  DateTime
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  user             User     @relation(fields: [userId], references: [id])
+  lessonId         Int
+  lesson           Lesson   @relation(fields: [lessonId], references: [id])
+  date             DateTime
+  startTime        String   // "HH:MM"
+  endTime          String   // "HH:MM"
+  blockCount       Int
+  isReview         Boolean  @default(false)
+  completed        Boolean  @default(false)
+  weekStart        DateTime
+
+  // Placement score breakdown (placement-score.md)
+  placementLayer1  Int?     // temel tercih skoru
+  placementLayer2  Int?     // insight override katkısı
+  placementLayer3  Int?     // DOW bonus katkısı
+  placementLayer4  Int?     // bağlamsal skor katkısı
+  placementTotal   Int?     // layer1+2+3+4
+  placementMax     Int?     // teorik maksimum (o ders + o gün + aktif override'lar)
+  qualityRatio     Float?   // placementTotal / placementMax (0.0–1.0)
+  wasForced        Boolean  @default(false)  // qualityRatio < 0.35
 }
 
 model DailyChecklist {
@@ -255,13 +293,14 @@ model DailyChecklist {
 }
 
 model ChecklistItem {
-  id              Int            @id @default(autoincrement())
-  checklistId     Int
-  checklist       DailyChecklist @relation(fields: [checklistId], references: [id])
-  lessonId        Int
-  plannedBlocks   Int
-  completedBlocks Int            @default(0)
-  delayed         Boolean        @default(false)
+  id                 Int            @id @default(autoincrement())
+  checklistId        Int
+  checklist          DailyChecklist @relation(fields: [checklistId], references: [id])
+  lessonId           Int
+  plannedBlocks      Int
+  completedBlocks    Int            @default(0)
+  delayed            Boolean        @default(false)
+  productivityRating Int?           // 1=düşük 2=orta 3=iyi; session sonrası opsiyonel
 }
 
 model WeeklyFeedback {
@@ -279,6 +318,109 @@ model LessonFeedback {
   weeklyFeedback   WeeklyFeedback @relation(fields: [weeklyFeedbackId], references: [id])
   lessonId         Int
   needsMoreTime    Int            // -1 | 0 | +1
+}
+
+model LessonGrade {
+  id               Int      @id @default(autoincrement())
+  lessonId         Int
+  lesson           Lesson   @relation(fields: [lessonId], references: [id])
+  examId           Int?     // LessonExam.id ile eşleştirilebilir (opsiyonel)
+  score            Float    // 0-100
+  achievementRatio Float    // score / lesson.targetGrade
+  gradedAt         DateTime
+}
+
+model UserInsight {
+  id                    Int         @id @default(autoincrement())
+  userId                Int
+  user                  User        @relation(fields: [userId], references: [id])
+  type                  InsightType
+  confidence            Float
+  title                 String
+  description           String
+  evidenceJson          Json
+  recommendedActionJson Json?
+  needsUserAnswer       Boolean     @default(false)
+  answered              Boolean     @default(false)
+  firstDetectedAt       DateTime    @default(now())
+  lastDetectedAt        DateTime    @default(now())
+  isActive              Boolean     @default(true)
+}
+
+model LessonPlanOverride {
+  id                    Int             @id @default(autoincrement())
+  lessonId              Int             @unique
+  lesson                Lesson          @relation(fields: [lessonId], references: [id])
+  maxSessionBlocks      Int?
+  preferEarlySlot       Boolean         @default(false)
+  avoidTimeAfter        String?         // "HH:MM"
+  dayPreferenceOverride String?         // JSON: ["rahat","yorucu","normal"]
+  addReviewBlock        Boolean         @default(false)
+  splitIntoShort        Boolean         @default(false)
+  examWeekCapReduction  Boolean         @default(false)
+  bestWindowForLesson   String?         // "morning"|"afternoon"|"evening"|"night"
+  worstWindowForLesson  String?
+  source                OverrideSource  @default(INSIGHT)
+  insightType           String
+  updatedAt             DateTime        @updatedAt
+}
+
+model PendingInsightQuestion {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  lessonId     Int?
+  insightType  String
+  questionText String
+  optionsJson  String   // JSON: [{label, value, planEffect}]
+  answered     Boolean  @default(false)
+  answerValue  String?
+  createdAt    DateTime @default(now())
+}
+
+enum OverrideSource {
+  INSIGHT        // sistem pattern tespit etti
+  USER_EXPLICIT  // kullanıcı doğrudan söyledi
+}
+
+enum InsightType {
+  // 6.1 - 6.9: Haftalık yük/completion çelişkileri
+  NEEDS_MORE_TIME_BUT_NOT_COMPLETING
+  OVERLOADED_BUT_COMPLETING
+  INSUFFICIENT_BUT_UNDER_COMPLETING
+  SUITABLE_BUT_RESCHEDULED_OFTEN
+  FREQUENT_DELAY_UNKNOWN_REASON
+  OVERLOADED_BUT_NEEDS_MORE_TIME
+  INSUFFICIENT_BUT_NO_CAPACITY
+  AVOIDING_CRITICAL_LESSONS
+  DELAYS_CAUSE_WEEKEND_OVERLOAD
+
+  // 6.10 - 6.17: Davranış örüntüleri
+  LONG_SESSION_SUCCESS
+  SHORT_SESSION_PREFERRED
+  HIGH_DOW_PERFORMANCE
+  NIGHT_SLOT_AVOIDANCE_NEEDED
+  EXAM_STRESS_COMPLETION_DROP
+  LOW_CONSISTENCY_PATTERN
+  HIGH_FATIGUE_HIGH_COMPLETION
+  SLEEP_DEFICIT_NOTIFICATION
+
+  // 6.18: Verim örüntüsü
+  SESSION_PRODUCTIVITY_PATTERN
+
+  // 6.19 - 6.22: Not analizi
+  GRADE_BELOW_TARGET_LOW_EFFORT
+  GRADE_BELOW_TARGET_HIGH_EFFORT
+  GRADE_ABOVE_TARGET_LOW_EFFORT
+  GRADE_TARGET_CONSISTENTLY_MISSED
+
+  // Placement analytics (placement-score.md)
+  PLACEMENT_QUALITY_DROPPING
+  CAPACITY_SHRINKING
+  BUSY_SLOT_BLOCKING
+  LESSON_CONSISTENTLY_MISPLACED
+  OVERRIDE_INEFFECTIVE
+  LAYER2_CONSISTENTLY_NEGATIVE
+  LAYER3_NOT_APPLYING
 }
 ```
 
@@ -301,7 +443,7 @@ model LessonFeedback {
 |--------|-------------------------|-----------------------------------------------------------------------|
 | GET    | /user/me                | Giriş yapan kullanıcının profilini getir                             |
 | POST   | /user/setup             | Kullanıcı tercihlerini kaydet (ilk kurulum)                          |
-| PUT    | /user/busy-slots        | BusySlot'ları tamamen güncelle                                        |
+| PUT    | /user/busy-slots        | BusySlot'ları tamamen güncelle; plan oluşturmaz veya recalculation başlatmaz |
 | GET    | /user/student-profile   | Dijital ikiz (StudentProfile) verisini getir                         |
 | POST   | /user/end-term          | Aktif dönemi kapat (`isActive=false`, `endedAt` set edilir)          |
 | POST   | /user/start-term        | Aktif dönemi kapatıp yeni boş dönem başlat. Body: `{ name?: string }`|
@@ -310,16 +452,40 @@ model LessonFeedback {
 
 | Method | Path                  | Açıklama                                           |
 |--------|-----------------------|----------------------------------------------------|
-| POST   | /planner/create       | Haftalık programı oluşturur (Pazar / ilk kurulum)  |
-| POST   | /planner/recalculate  | BusySlot değişikliğinde yeniden hesapla (ADIM 9)   |
+| POST   | /planner/create       | Haftalık programı oluşturur veya mevcut haftayı baştan kurar |
+| POST   | /planner/recalculate  | Body: `{ fromDate?: "YYYY-MM-DD" }`; yalnızca başlangıç tarihi ve sonrasını yeniden hesaplar |
 | GET    | /planner/week         | Haftanın bloklarını getir                          |
+
+### Planner Trigger Rules
+
+- `smartRebuild` yoktur. Haftalık planı yalnızca `createWeeklyPlan` oluşturur.
+- Today ve Week ekranları açıldığında en az 1 ders + en az 1 busy time varsa ve plan yoksa, boşsa veya eski haftaya aitse `POST /planner/create` çağrılır.
+- Manuel Create Plan doğrudan `POST /planner/create` çağırır.
+- Busy time kaydetmek tek başına planı otomatik oluşturmaz veya değiştirmez.
+- Date'li/geçici busy time kaydedildikten sonra UI mevcut ders bloklarıyla çakışma kontrolü yapar.
+- Çakışma yoksa UI sadece yeniden yüklenir; plan aynı kalır.
+- Çakışma varsa `POST /planner/recalculate` çağrılır ve `fromDate` busy time tarihidir.
+- `POST /planner/recalculate` body almadan çağrılırsa bugünden sonrası yeniden hesaplanır.
+- Rutin busy time değişiklikleri otomatik rebuild/recalculate başlatmaz.
 
 ### Checklist
 
 | Method | Path               | Açıklama                     |
 |--------|--------------------|------------------------------|
 | POST   | /checklist/submit  | Günlük checklist gönder      |
+| GET    | /checklist/history | Son 35 günün checklist durumunu getir |
+| GET    | /checklist/status/:date | Aynı haftadaki eksik checklistleri ve checklist kapalı durumunu getir |
 | GET    | /checklist/:date   | Tarihe göre checklist getir  |
+
+### First Week Onboarding
+
+- İlk hafta, `User.firstWeekStartedAt` tarihinin bulunduğu Pazartesi-Pazar haftasıdır.
+- `firstWeekStartedAt = null` olan eski kullanıcılar ilk hafta moduna alınmaz.
+- İlk haftada plan üretimi için en az 1 ders ve en az 1 busy time gerekir.
+- Kullanıcı hafta ortasında kayıt olduysa ilk hafta planı sadece bugünden Pazar gününe kadar oluşturulur; geçmiş günlere blok yazılmaz.
+- İlk hafta `GET /checklist/status/:date` şu davranışı verir: `blocked=false`, `missingDates=[]`, `checklist=null`, `checklistDisabled=true`, `disabledReason="first_week"`.
+- İlk hafta `POST /checklist/submit` 400 döner: "İlk hafta checklist kapalı."
+- UI ilk hafta checklist paneli yerine bilgi paneli gösterir ve kullanıcıya adaptasyon haftasında checklist sunulmayacağını bildirir.
 
 ### Feedback
 
@@ -348,6 +514,15 @@ model LessonFeedback {
 | POST   | /lesson/:id/exam             | Sınav tarihi ekle                                  |
 | POST   | /lesson/:id/deadline         | Deadline / ödev ekle                               |
 | DELETE | /lesson/:id/deadline/:did    | Deadline sil                                       |
+| POST   | /lesson/:id/grade            | Sınav notu gir → LessonGrade kaydı + achievementRatio hesabı |
+
+### Insight
+
+| Method | Path                         | Açıklama                                                    |
+|--------|------------------------------|-------------------------------------------------------------|
+| GET    | /insight                     | Aktif UserInsight listesi (isActive=true)                   |
+| GET    | /insight/questions           | Cevaplanmamış PendingInsightQuestion listesi                |
+| POST   | /insight/answer/:id          | Soruyu yanıtla → LessonPlanOverride güncellenir             |
 
 ### Debug (korumasız — sadece MODE=test)
 
@@ -406,16 +581,22 @@ _override güncelleme: profil ekranındaki Edit butonuyla
 
 `StudentProfile`, her `POST /checklist/submit` sonrasında `UserService.updateStudentProfile()` ile güncellenir.
 
-| Alan                | Hesaplama                                                        |
-|---------------------|------------------------------------------------------------------|
-| `completionRate7d`  | Son 7 günde tamamlanan / planlanan blok oranı                    |
-| `avgStress7d`       | Son 7 günün stressLevel ortalaması                               |
-| `avgFatigue7d`      | Son 7 günün fatigueLevel ortalaması                              |
-| `dowCompletionRates`| Haftanın her günü için tamamlama oranı (Mon=0..Sun=6, JSON)      |
-| `sweetSpotBlocks`   | Tam tamamlanan session'lardaki ortalama blockCount               |
-| `stressNearExam`    | Sınavı ≤7 gün kalan günlerdeki ortalama stres                    |
-| `consistencyScore`  | Son 14 günde en az 1 blok tamamlanan gün oranı (activeDays / 14) |
-| `totalSubmissions`  | Toplam checklist gönderim sayısı                                 |
+| Alan                        | Hesaplama                                                                  |
+|-----------------------------|----------------------------------------------------------------------------|
+| `completionRate7d`          | Son 7 günde tamamlanan / planlanan blok oranı                              |
+| `avgStress7d`               | Son 7 günün stressLevel ortalaması                                         |
+| `avgFatigue7d`              | Son 7 günün fatigueLevel ortalaması                                        |
+| `dowCompletionRates`        | Haftanın her günü için tamamlama oranı (Mon=0..Sun=6, JSON)                |
+| `sweetSpotBlocks`           | Tam tamamlanan session'lardaki ortalama blockCount                         |
+| `stressNearExam`            | Sınavı ≤7 gün kalan günlerdeki ortalama stres                              |
+| `consistencyScore`          | Son 14 günde en az 1 blok tamamlanan gün oranı (activeDays / 14)           |
+| `totalSubmissions`          | Toplam checklist gönderim sayısı                                           |
+| `avgQualityRatio7d`         | Son 7 günün ScheduledBlock.qualityRatio ortalaması                         |
+| `lessonQualityScores`       | Ders bazlı avgQualityRatio + katman ortalamaları (JSON)                    |
+| `busySlotImpact`            | Her busySlot için qualityRatio farkı: o slot olmayan vs olan günler (JSON) |
+| `insightOverrideEffects`    | Her override için before/after avgQualityRatio karşılaştırması (JSON)      |
+| `maxPossibleTrend`          | Son 4 hafta avgMaxPossible değerleri — kapasite daralıyor mu? (JSON)       |
+| `lessonProductivityByWindow`| Ders × zaman dilimi productivity ortalaması, ChecklistItem.productivityRating'den (JSON) |
 
 ---
 
@@ -435,6 +616,13 @@ const MIN_REVIEW_BLOCKS = 1;
 ## Algoritma — Haftalık Program Oluşturma (`POST /planner/create`)
 
 > İç birim her zaman **blok**tur (1 blok = 30 dk). Ondalıklı değer yoktur.
+
+`createWeeklyPlan` iki modda çalışır:
+
+- Tam hafta modu: `fromDate` verilmez; ilgili haftanın tüm `ScheduledBlock` kayıtları silinir ve Pazartesi-Pazar yeniden yerleştirilir.
+- Partial mode: `fromDate` verilir; yalnızca `date >= fromDate` blokları silinir ve yerleştirme pencereleri sadece `fromDate` ile Pazar arasındaki günlerden oluşur.
+
+İlk hafta onboarding akışında hafta başlangıcı yine Pazartesi kalır; ancak kayıt/giriş günü hafta ortasındaysa placement günleri bugünden Pazar'a kadar filtrelenir.
 
 ### ADIM 0 — Tükenmişlik Sinyali
 
@@ -683,29 +871,41 @@ WHILE sonu → kalan > 0 olan dersler → notFitted kaydına ekle
 
 ### ADIM 9 — Hafta İçi Yeniden Hesaplama
 
-Tetikleyici: `POST /planner/recalculate` (busySlot ekle/sil/değiştir veya günlük uyku sorusu)
+Tetikleyici: yalnızca `POST /planner/recalculate`.
+
+Busy time kaydı backend'de otomatik plan değişikliği yapmaz. UI date'li/geçici busy time eklendikten sonra mevcut `ScheduledBlock` kayıtlarıyla çakışma kontrolü yapar. Çakışma varsa `POST /planner/recalculate` çağrılır; çakışma yoksa plan korunur.
 
 ```
-1. Geçmiş günler kilitlenir.
+Request body:
+  { "fromDate": "YYYY-MM-DD" }   // opsiyonel
 
-2. Her ders için kalan blok:
-   X_kalanBlocks[lesson] =
-     X_efektifBlocks[lesson] − completedBlocks[lesson]
-   (completedBlocks = ChecklistItem.completedBlocks toplamı)
-   X_kalanBlocks < 0 ise → ders bu hafta tamamlandı, atla.
+1. Başlangıç tarihi hesaplanır:
+   recalcStart = max(todayStart, fromDateStart)
+   Body yoksa fromDateStart = todayStart.
 
-3. Kalan günler için kapasite:
-   dayCapacityBlocks[gün] =
-     min(freeBlocksInWindow, maxSessions × maxBlocksPerSession)
+2. recalcStart öncesindeki plan blokları korunur.
 
-4. ADIM 3–8 mantığı kalan günlere uygulanır.
+3. recalcStart ve sonrası mevcut plan blokları ders bazında toplanır:
+   futureAllocated[lesson] = Σ ScheduledBlock.blockCount
+   WHERE date >= recalcStart
 
-5. Zorunlu delay kontrolü:
-   X_kalanBlocks[lesson] > Σ dayCapacityBlocks ise:
-     Lesson.zorunluDelayCount += 1
-     Lesson.zorunluMissedBlocks += (fark)
-     FeedbackEvent("zorunlu_delay", lesson)
-     Mesaj: "BusyTime değişikliği nedeniyle {ders} bu haftaya sığmıyor."
+4. Aynı hafta içinde recalcStart öncesi tamamlanan checklist blokları ders bazında toplanır:
+   completedBeforeStart[lesson] = Σ ChecklistItem.completedBlocks
+   WHERE weekStart <= checklist.date < recalcStart
+
+5. Kalan yük hesaplanır:
+   remaining[lesson] = futureAllocated[lesson] - completedBeforeStart[lesson]
+   remaining <= 0 ise ders yeniden plana eklenmez.
+
+6. Backend yalnızca date >= recalcStart olan ScheduledBlock kayıtlarını siler.
+
+7. `createWeeklyPlan(userId, now, remaining, { fromDate: recalcStart })`
+   çağrılır.
+
+8. ADIM 3-8 yerleştirme mantığı sadece recalcStart-Pazar aralığına uygulanır.
+
+9. Recalculate çağrısı `zorunluDelayCount` / `zorunluMissedBlocks` sayaçlarını artırmaz;
+   sığmayan dersler `notFitted` response alanıyla UI'a bildirilir.
 ```
 
 ---
@@ -717,15 +917,16 @@ Tetikleyici: `POST /planner/recalculate` (busySlot ekle/sil/değiştir veya gün
 ```
 delayed = true olan ders:
   Lesson.keyfiDelayCount += 1
-  → ADIM 9 tetiklenir (kalan bloklar ileri günlere kaydırılır)
-  → Sığmazsa: zorunluDelayCount += 1, zorunluMissedBlocks += fark
+  → Plan otomatik yeniden hesaplanmaz.
+  → Bir sonraki createWeeklyPlan çalıştığında delay etkisi ADIM 4 ve ADIM 6'da dikkate alınır.
 
 completedBlocks < plannedBlocks:
-  → Fark = boş slotlara blok olarak eklenir
+  → Checklist item eksik tamamlandı olarak kaydedilir.
+  → Plan otomatik değiştirilmez.
 
 completedBlocks ≥ plannedBlocks:
-  → Dersin bu haftaki kalan bloğu serbest bırakılır
-  → Serbest blok sonraki öncelikli derse önerilir
+  → Checklist item tamamlandı olarak kaydedilir.
+  → Gelecekte `POST /planner/recalculate` çağrılırsa recalcStart öncesi tamamlanan bloklar kalan yükten düşülür.
 ```
 
 ### Birikimli Etkiler (Sonraki Hafta)
@@ -827,7 +1028,7 @@ Her sabah kullanıcıya sorulur: "Dün gece yeterince uyudun mu?"
   Hayır → o günün maxBlocksPerSession -= 1 (alt sınır = 1)
   Evet  → değişiklik yok
 
-Bu sadece o günü etkiler. ADIM 9 tetiklenir (günlük yeniden hesaplama).
+Bu sadece o günü etkiler. Otomatik ADIM 9/recalculate tetiklemez.
 Program kurulurken uyku sinyali yoktur.
 ```
 
@@ -873,7 +1074,7 @@ Garanti: toplam her zaman hedef değere eşittir.
 
 1. **Tüm süre matematiği blok cinsindendir.** Ondalıklı blok yoktur; `Math.floor` veya `largestRemainder` kullanılır.
 2. **KRİTİK öncelik diğer tüm kurallara karşı kazanır.**
-3. **Her modül kendi klasöründe bağımsızdır:** `auth`, `user`, `planner`, `checklist`, `feedback`, `system-feedback`, `lesson`, `prisma`, `debug`, `utils`.
+3. **Her modül kendi klasöründe bağımsızdır:** `auth`, `user`, `planner`, `checklist`, `feedback`, `system-feedback`, `lesson`, `insight`, `prisma`, `debug`, `utils`.
 4. **Algoritma adımları `planner/algorithm/` altında ayrı dosyalardadır** (step0 … step9).
 5. **Her service'teki fonksiyona açıklama satırı yazılır.**
 6. **Tüm zaman operasyonları `getCurrentTime()` ile yapılır**, `new Date()` doğrudan kullanılmaz.

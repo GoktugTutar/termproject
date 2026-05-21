@@ -27,7 +27,6 @@ export function step4CalculateX(
     difficulty: number;
     keyfiDelayCount: number;
     zorunluDelayCount: number;
-    zorunluMissedBlocks: number;
     needsMoreTime: number;
   }>,
   effectiveBlocks: number,
@@ -92,14 +91,9 @@ export function step4CalculateX(
     }
   }
 
-  // Zorunlu telafi bloğu ekle (önceki haftadan kalan eksikler)
-  return lessons.map((lesson, i) => {
-    const base = capped[i];
-    const extra = lesson.zorunluDelayCount > 0 ? lesson.zorunluMissedBlocks : 0;
-    return {
-      lessonId: lesson.id,
-      allocatedBlocks: base,
-      effectiveBlocks: base + extra,
-    };
-  });
+  return lessons.map((lesson, i) => ({
+    lessonId: lesson.id,
+    allocatedBlocks: capped[i],
+    effectiveBlocks: capped[i],
+  }));
 }

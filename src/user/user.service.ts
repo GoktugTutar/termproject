@@ -48,14 +48,14 @@ export class UserService {
 
     const dayOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     const parsed = dayOnly
-      ? new Date(Number(dayOnly[1]), Number(dayOnly[2]) - 1, Number(dayOnly[3]))
+      ? new Date(Date.UTC(Number(dayOnly[1]), Number(dayOnly[2]) - 1, Number(dayOnly[3])))
       : new Date(date);
 
     if (Number.isNaN(parsed.getTime())) {
       throw new BadRequestException('Busy time tarihi geçersiz.');
     }
 
-    parsed.setHours(0, 0, 0, 0);
+    parsed.setUTCHours(0, 0, 0, 0);
     return parsed;
   }
 

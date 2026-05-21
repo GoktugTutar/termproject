@@ -18,6 +18,12 @@ export class FeedbackController {
     return this.feedbackService.saveWeeklyFeedback(req.user.id, dto);
   }
 
+  // Bu hafta için weekly feedback gönderildi mi?
+  @Get('weekly/status')
+  getWeeklyStatus(@Request() req) {
+    return this.feedbackService.getWeeklyStatus(req.user.id);
+  }
+
   // Aktif uyarı ve öneri mesajlarını getir
   @Get('messages')
   getMessages(@Request() req) {
