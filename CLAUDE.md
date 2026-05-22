@@ -904,8 +904,9 @@ Request body:
 
 8. ADIM 3-8 yerleştirme mantığı sadece recalcStart-Pazar aralığına uygulanır.
 
-9. Recalculate çağrısı `zorunluDelayCount` / `zorunluMissedBlocks` sayaçlarını artırmaz;
-   sığmayan dersler `notFitted` response alanıyla UI'a bildirilir.
+9. Recalculate çağrısında yalnızca yeniden yerleştirilemeyen dersler `notFitted`
+   response alanıyla UI'a bildirilir ve `zorunluDelayCount` / `zorunluMissedBlocks`
+   sayaçlarını artırır. Yeni slota yerleşen dersler sayaç artırmaz.
 ```
 
 ---

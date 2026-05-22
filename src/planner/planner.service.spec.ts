@@ -35,6 +35,31 @@ function createUser() {
   };
 }
 
+function createLesson(id: number) {
+  return {
+    id,
+    name: `Lesson ${id}`,
+    difficulty: 3,
+    keyfiDelayCount: 0,
+    zorunluDelayCount: 0,
+    zorunluMissedBlocks: 0,
+    needsMoreTime: 0,
+    exams: [],
+    deadlines: [],
+  };
+}
+
+function createFullWeekBusySlots() {
+  return Array.from({ length: 7 }, (_, i) => ({
+    dayOfWeek: i + 1,
+    isRoutine: true,
+    date: null,
+    startTime: '08:00',
+    endTime: '24:00',
+    fatigueLevel: 1,
+  }));
+}
+
 describe('PlannerService', () => {
   it('creates a full weekly plan even during the first week', async () => {
     const prisma = createPrismaMock();
@@ -114,5 +139,53 @@ describe('PlannerService', () => {
       weekStart: new Date(2026, 4, 18),
       date: { gte: new Date(2026, 4, 22) },
     });
+  });
+
+  it('increments forced delay counters for lessons that do not fit during recalculate', async () => {
+    const prisma = createPrismaMock();
+    prisma.scheduledBlock.findMany
+      .mockResolvedValueOnce([{ lessonId: 7, blockCount: 3 }])
+      .mockResolvedValueOnce([]);
+    prisma.checklistItem.findMany.mockResolvedValue([
+      { lessonId: 7, completedBlocks: 1 },
+    ]);
+    prisma.user.findUnique.mockResolvedValue({
+      ...createUser(),
+      busySlots: createFullWeekBusySlots(),
+      lessons: [createLesson(7)],
+    });
+
+    const service = new PlannerService(prisma as any);
+    const result = await service.recalculate(1);
+
+    expect(result.notFitted).toEqual({ 7: 2 });
+    expect(prisma.lesson.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: {
+        zorunluDelayCount: { increment: 1 },
+        zorunluMissedBlocks: { increment: 2 },
+      },
+    });
+  });
+
+  it('does not increment forced delay counters when recalculated lessons fit again', async () => {
+    const prisma = createPrismaMock();
+    prisma.scheduledBlock.findMany
+      .mockResolvedValueOnce([{ lessonId: 7, blockCount: 2 }])
+      .mockResolvedValueOnce([]);
+    prisma.checklistItem.findMany.mockResolvedValue([
+      { lessonId: 7, completedBlocks: 0 },
+    ]);
+    prisma.user.findUnique.mockResolvedValue({
+      ...createUser(),
+      lessons: [createLesson(7)],
+    });
+
+    const service = new PlannerService(prisma as any);
+    const result = await service.recalculate(1);
+
+    expect(result.notFitted).toEqual({});
+    expect(prisma.scheduledBlock.create).toHaveBeenCalled();
+    expect(prisma.lesson.update).not.toHaveBeenCalled();
   });
 });

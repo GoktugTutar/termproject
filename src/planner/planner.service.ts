@@ -323,19 +323,15 @@ export class PlannerService {
     // ────────────────────────────────────────────────────────────────────────
 
     // Sığmayan dersler için zorunluDelayCount ve zorunluMissedBlocks güncelle.
-    // Sadece tam haftalık plan oluşturmada (overrideAllocations=null) güncellenir;
-    // recalculate hafta içinde birden çok kez çağrılabilir, tekrar artış olmaması için
-    // oradan geldiğinde (override var) sayaçlara dokunmayız — bildirim yine döner.
-    if (!overrideAllocations) {
-      for (const [lessonIdStr, missedBlocks] of Object.entries(notFitted)) {
-        await this.prisma.lesson.update({
-          where: { id: Number(lessonIdStr) },
-          data: {
-            zorunluDelayCount: { increment: 1 },
-            zorunluMissedBlocks: { increment: missedBlocks as number },
-          },
-        });
-      }
+    // Tam haftalık plan ve recalculate aynı şekilde zorunlu sığmama sinyali üretir.
+    for (const [lessonIdStr, missedBlocks] of Object.entries(notFitted)) {
+      await this.prisma.lesson.update({
+        where: { id: Number(lessonIdStr) },
+        data: {
+          zorunluDelayCount: { increment: 1 },
+          zorunluMissedBlocks: { increment: missedBlocks as number },
+        },
+      });
     }
 
     // Tam plan eski haftayı değiştirir; recalculate sadece başlangıç ve sonrasını yeniler.
@@ -436,8 +432,8 @@ export class PlannerService {
     );
 
     // Kalan blokları override olarak geçirerek yeni planı oluştur.
-    // notFitted dersler createWeeklyPlan'dan response olarak döner (Flutter bildirir).
-    // zorunluDelayCount bu çağrıda güncellenmez (overrideAllocations dolu olduğundan).
+    // notFitted dersler createWeeklyPlan'dan response olarak döner ve zorunlu delay
+    // sayaçlarına işlenir.
     return this.createWeeklyPlan(userId, now, remainingAllocations, {
       fromDate: recalcStart,
     });
