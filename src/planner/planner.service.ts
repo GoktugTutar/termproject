@@ -298,6 +298,7 @@ export class PlannerService {
       programScore,
       programLevel,
       forcedBlocks,
+      unplacedLessonIds,
     } = step8Placement(
       cognitiveOrdered.map((l) => ({
         lessonId: l.lessonId,
@@ -318,6 +319,11 @@ export class PlannerService {
     console.log(
       `  programScore=${programScore.toFixed(3)} programLevel=${programLevel} forcedBlocks=${forcedBlocks}`,
     );
+    if (unplacedLessonIds.length > 0) {
+      console.warn(
+        `[PLANNER] WARNING: ${unplacedLessonIds.length} lesson(s) could not be placed: lessonIds=${unplacedLessonIds.join(', ')}`,
+      );
+    }
     // ────────────────────────────────────────────────────────────────────────
 
     // Tam plan eski haftayı değiştirir; recalculate sadece başlangıç ve sonrasını yeniler.
@@ -346,7 +352,7 @@ export class PlannerService {
     }
 
     const weekBlocks = await this.getWeekBlocks(userId, now);
-    return { ...weekBlocks, programScore, programLevel, forcedBlocks };
+    return { ...weekBlocks, programScore, programLevel, forcedBlocks, unplacedLessonIds };
   }
 
   // Haftanın planlanan bloklarını getir

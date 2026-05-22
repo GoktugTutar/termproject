@@ -239,9 +239,10 @@ interface LessonInput {
 
 interface PlacementResult {
   placed: PlacedBlock[];
-  programScore: number;   // 0.0–1.0
+  programScore: number;          // 0.0–1.0
   programLevel: ProgramLevel;
-  forcedBlocks: number;   // dalga 3-4'ten geçen blok sayısı
+  forcedBlocks: number;          // dalga 3-4'ten geçen blok sayısı
+  unplacedLessonIds: number[];   // hiç yerleştirilemeyen dersler
 }
 
 // Bir dalga için round-robin: sığanları yerleştirir, sığmayanları döndürür.
@@ -393,46 +394,52 @@ export function step8Placement(
   // Dalga 3: art arda kısıt yok + maxSessions overflow
   runWave(3, ...sharedArgs, true, true);
 
-  // Dalga 4: her şeyi zorla (dayBlocks bütçesi görmezden, her güne koy)
-  for (const { lessonId } of lessonOrder) {
-    if (remaining[lessonId] <= 0) continue;
+  // Dalga 4: her şeyi zorla (dayBlocks bütçesi görmezden) — round-robin
+  const wave4Meta = new Map(
+    lessonOrder.map((l) => [l.lessonId, classifyLesson(l.difficulty, l.priority)]),
+  );
+  let wave4Progress = true;
+  while (wave4Progress) {
+    wave4Progress = false;
 
-    for (let dayIdx = 0; dayIdx < dayConfigs.length; dayIdx++) {
-      if (remaining[lessonId] <= 0) break;
+    for (const { lessonId } of lessonOrder) {
+      if (remaining[lessonId] <= 0) continue;
 
-      const day     = dayConfigs[dayIdx];
-      const d       = day.date;
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const windows = freeWindows[dateStr] || [];
-      const lessonClass = classifyLesson(
-        lessonOrder.find((l) => l.lessonId === lessonId)!.difficulty,
-        lessonOrder.find((l) => l.lessonId === lessonId)!.priority,
-      );
-      const dayClass = getDayClass(day);
+      const lessonClass = wave4Meta.get(lessonId)!;
 
-      const toPlace = Math.min(remaining[lessonId], day.maxBlocksPerSession);
-      if (toPlace <= 0) continue;
+      for (let dayIdx = 0; dayIdx < dayConfigs.length; dayIdx++) {
+        const day     = dayConfigs[dayIdx];
+        const d       = day.date;
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const windows = freeWindows[dateStr] || [];
+        const dayClass = getDayClass(day);
 
-      const placedOk = placeIntoWindows(
-        windows,
-        toPlace * 30,
-        preferredRange,
-        lessonId,
-        day,
-        toPlace,
-        placed,
-        lessonClass,
-        dayClass,
-        4,
-      );
+        const toPlace = Math.min(remaining[lessonId], day.maxBlocksPerSession);
+        if (toPlace <= 0) continue;
 
-      freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
+        const placedOk = placeIntoWindows(
+          windows,
+          toPlace * 30,
+          preferredRange,
+          lessonId,
+          day,
+          toPlace,
+          placed,
+          lessonClass,
+          dayClass,
+          4,
+        );
 
-      if (placedOk) {
-        dayBlocksRemaining[dayIdx] -= toPlace;
-        remaining[lessonId]        -= toPlace;
-        sessionsUsed[dayIdx]++;
-        placedDaysPerLesson[lessonId].add(dayIdx);
+        freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
+
+        if (placedOk) {
+          dayBlocksRemaining[dayIdx] -= toPlace;
+          remaining[lessonId]        -= toPlace;
+          sessionsUsed[dayIdx]++;
+          placedDaysPerLesson[lessonId].add(dayIdx);
+          wave4Progress = true;
+          break; // bu ders için bir session yerleşti, sıradaki derse geç
+        }
       }
     }
   }
@@ -446,13 +453,17 @@ export function step8Placement(
     if (wave >= 3) forcedBlocks += block.blockCount;
   }
 
+  const unplacedLessonIds = Object.entries(remaining)
+    .filter(([, r]) => r > 0)
+    .map(([id]) => Number(id));
+
   const programLevel = calcProgramLevel(violationScore, totalBlocks);
   const programScore =
     totalBlocks > 0 ? violationScore / (totalBlocks * 4) : 0;
 
   console.log(
-    `[STEP8] totalBlocks=${totalBlocks} violationScore=${violationScore} programScore=${programScore.toFixed(3)} level=${programLevel} forcedBlocks=${forcedBlocks}`,
+    `[STEP8] totalBlocks=${totalBlocks} violationScore=${violationScore} programScore=${programScore.toFixed(3)} level=${programLevel} forcedBlocks=${forcedBlocks} unplaced=${unplacedLessonIds.length}`,
   );
 
-  return { placed, programScore, programLevel, forcedBlocks };
+  return { placed, programScore, programLevel, forcedBlocks, unplacedLessonIds };
 }
