@@ -242,10 +242,10 @@ export class PlannerService {
 
     // ADIM 5: Blokları günlere dağıt ve session limitlerini belirle
     const dayConfigs = step5DayDistribution(
-      effectiveBlocks,
       planningDays,
       user.studyStyle,
       maxBlocksPerSession,
+      user.lessons.length,
     );
 
     // ADIM 6: Dersleri öncelik sırasına göre sırala
@@ -295,8 +295,9 @@ export class PlannerService {
     // ADIM 8: Dersleri gün/ders sınıfı eşleşmesiyle yerleştir
     const {
       placed: lessonPlaced,
-      notFitted,
-      programZorlastu,
+      programScore,
+      programLevel,
+      forcedBlocks,
     } = step8Placement(
       cognitiveOrdered.map((l) => ({
         lessonId: l.lessonId,
@@ -314,25 +315,10 @@ export class PlannerService {
     console.log(
       `[PLANNER] placement results: ${lessonPlaced.length} lesson blocks + ${reviewPlaced.length} review blocks placed`,
     );
-    if (Object.keys(notFitted).length > 0) {
-      console.log(`  NOT FITTED:`, notFitted);
-    }
-    if (programZorlastu) {
-      console.log(`  programZorlastu=true`);
-    }
+    console.log(
+      `  programScore=${programScore.toFixed(3)} programLevel=${programLevel} forcedBlocks=${forcedBlocks}`,
+    );
     // ────────────────────────────────────────────────────────────────────────
-
-    // Sığmayan dersler için zorunluDelayCount ve zorunluMissedBlocks güncelle.
-    // Tam haftalık plan ve recalculate aynı şekilde zorunlu sığmama sinyali üretir.
-    for (const [lessonIdStr, missedBlocks] of Object.entries(notFitted)) {
-      await this.prisma.lesson.update({
-        where: { id: Number(lessonIdStr) },
-        data: {
-          zorunluDelayCount: { increment: 1 },
-          zorunluMissedBlocks: { increment: missedBlocks as number },
-        },
-      });
-    }
 
     // Tam plan eski haftayı değiştirir; recalculate sadece başlangıç ve sonrasını yeniler.
     await this.prisma.scheduledBlock.deleteMany({
@@ -360,7 +346,7 @@ export class PlannerService {
     }
 
     const weekBlocks = await this.getWeekBlocks(userId, now);
-    return { ...weekBlocks, programZorlastu, notFitted };
+    return { ...weekBlocks, programScore, programLevel, forcedBlocks };
   }
 
   // Haftanın planlanan bloklarını getir
@@ -432,8 +418,6 @@ export class PlannerService {
     );
 
     // Kalan blokları override olarak geçirerek yeni planı oluştur.
-    // notFitted dersler createWeeklyPlan'dan response olarak döner ve zorunlu delay
-    // sayaçlarına işlenir.
     return this.createWeeklyPlan(userId, now, remainingAllocations, {
       fromDate: recalcStart,
     });

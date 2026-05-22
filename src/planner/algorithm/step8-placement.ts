@@ -17,7 +17,10 @@ export interface PlacedBlock {
   endMin: number;
   blockCount: number;
   isReview: boolean;
+  waveUsed?: 1 | 2 | 3 | 4; // hangi dalganın yerleştirdiği (review blokları için opsiyonel)
 }
+
+export type ProgramLevel = 'normal' | 'busy' | 'very_busy';
 
 // Her ders sınıfı için tercih edilen gün sınıfı sırası
 const DAY_PREFERENCE: Record<LessonClass, DayClass[]> = {
@@ -29,11 +32,11 @@ const DAY_PREFERENCE: Record<LessonClass, DayClass[]> = {
 // Tercih edilen çalışma saatini dakika aralığına çevir
 function getPreferredRange(preferredStudyTime: string): { start: number; end: number } {
   switch (preferredStudyTime) {
-    case 'morning':   return { start: 8 * 60, end: 11 * 60 };
+    case 'morning':   return { start: 8 * 60,  end: 11 * 60 };
     case 'afternoon': return { start: 12 * 60, end: 15 * 60 };
     case 'evening':   return { start: 18 * 60, end: 21 * 60 };
     case 'night':     return { start: 21 * 60, end: 24 * 60 };
-    default:          return { start: 8 * 60, end: 24 * 60 };
+    default:          return { start: 8 * 60,  end: 24 * 60 };
   }
 }
 
@@ -41,34 +44,30 @@ function getPreferredRange(preferredStudyTime: string): { start: number; end: nu
 function splitWindow(w: TimeWindow, usedStart: number, usedEnd: number): TimeWindow[] {
   const result: TimeWindow[] = [];
   if (w.start < usedStart) result.push({ start: w.start, end: usedStart });
-  if (usedEnd < w.end) result.push({ start: usedEnd, end: w.end });
+  if (usedEnd < w.end)     result.push({ start: usedEnd,  end: w.end   });
   return result;
 }
 
 // Ders sınıfını difficulty ve priority'ye göre belirle
 function classifyLesson(difficulty: number, priority: string): LessonClass {
   if (difficulty >= 4 || priority === 'KRITIK') return 'AGIR';
-  if (difficulty <= 2 && priority === 'DUSUK') return 'HAFIF';
+  if (difficulty <= 2 && priority === 'DUSUK')  return 'HAFIF';
   return 'ORTA';
 }
 
 // Gün sınıfını DayConfig'deki göstergelere göre belirle
 function getDayClass(day: DayConfig): DayClass {
-  if (day.isRahat) return 'rahat';
+  if (day.isRahat)     return 'rahat';
   if (day.isCokYorucu) return 'yorucu';
   return 'normal';
 }
 
-// Gün sınıfının sayısal yoğunluk seviyesi
-function getDayIntensity(cls: DayClass): number {
-  if (cls === 'rahat') return 1;
-  if (cls === 'normal') return 2;
-  return 3; // yorucu
-}
-
 // Ders sınıfına göre gün indekslerini tercih sırasına göre döndür.
 // Her tercih grubu içinde kronolojik sıra korunur.
-function getDayOrder(lessonClass: LessonClass, dayConfigs: DayConfig[]): Array<{ idx: number; dayClass: DayClass }> {
+function getDayOrder(
+  lessonClass: LessonClass,
+  dayConfigs: DayConfig[],
+): Array<{ idx: number; dayClass: DayClass }> {
   const result: Array<{ idx: number; dayClass: DayClass }> = [];
   for (const targetClass of DAY_PREFERENCE[lessonClass]) {
     for (let i = 0; i < dayConfigs.length; i++) {
@@ -90,111 +89,77 @@ function creates3Consecutive(newIdx: number, placedDays: Set<number>): boolean {
   return streak >= 3;
 }
 
-// Ders sınıfına göre günlük maksimum blok sayısı
-// AGIR: max 1 blok/oturum (zor derslerde yoğunlaşma önlenir)
-// ORTA: max 2 blok/oturum
-// HAFIF: sınır yok (day.maxBlocksPerSession'a bırakılır)
-const LESSON_CLASS_CAP: Record<LessonClass, number> = {
-  AGIR:  1,
-  ORTA:  2,
-  HAFIF: 99,
-};
-
-// Bir oturuma yerleştirilecek blok sayısını hesapla (gün + ders sınıfı kısıtları)
-function calcToPlace(
-  remaining: number,
-  dayRemaining: number,
-  dayMaxPerSession: number,
-  lessonClass: LessonClass,
-): number {
-  return Math.min(remaining, dayRemaining, dayMaxPerSession, LESSON_CLASS_CAP[lessonClass]);
-}
-
-
 // Tercih edilen saate göre bir slotun pencere uzaklığını hesapla
-// Pencereler: morning(8-11), afternoon(12-15), evening(18-21), night(21-24)
-// Aradaki boşluklar (11-12, 15-18) en yakın pencereye atanır
-function windowDistance(startMin: number, preferredRange: { start: number; end: number }): number {
+function windowDistance(
+  startMin: number,
+  preferredRange: { start: number; end: number },
+): number {
   const windows = [
-    { start: 8 * 60, end: 11 * 60 },   // morning
-    { start: 12 * 60, end: 15 * 60 },  // afternoon
-    { start: 18 * 60, end: 21 * 60 },  // evening
-    { start: 21 * 60, end: 24 * 60 },  // night
+    { start: 8 * 60,  end: 11 * 60 },
+    { start: 12 * 60, end: 15 * 60 },
+    { start: 18 * 60, end: 21 * 60 },
+    { start: 21 * 60, end: 24 * 60 },
   ];
-
-  // Tercih edilen pencereyi bul
   const preferredIdx = windows.findIndex(
     (w) => w.start === preferredRange.start && w.end === preferredRange.end,
   );
-  if (preferredIdx === -1) return 0; // bilinmeyen pencere → ceza yok
+  if (preferredIdx === -1) return 0;
 
-  // Slotun hangi pencereye ait olduğunu bul
   const slotIdx = windows.findIndex((w) => startMin >= w.start && startMin < w.end);
-  const effectiveIdx = slotIdx !== -1 ? slotIdx : (() => {
-    // Boşluktaysa (11-12 veya 15-18) en yakın pencereyi bul
-    let closest = 0;
-    let minDist = Infinity;
-    windows.forEach((w, i) => {
-      const d = Math.min(Math.abs(startMin - w.start), Math.abs(startMin - w.end));
-      if (d < minDist) { minDist = d; closest = i; }
-    });
-    return closest;
-  })();
+  const effectiveIdx =
+    slotIdx !== -1
+      ? slotIdx
+      : (() => {
+          let closest = 0;
+          let minDist = Infinity;
+          windows.forEach((w, i) => {
+            const d = Math.min(Math.abs(startMin - w.start), Math.abs(startMin - w.end));
+            if (d < minDist) { minDist = d; closest = i; }
+          });
+          return closest;
+        })();
 
   return Math.abs(effectiveIdx - preferredIdx);
 }
 
 // Bir candidate slota puan ver
-// Yüksek puan = bu ders bu saate daha uygun
 function scoreCandidate(
   startMin: number,
   endMin: number,
   lessonClass: LessonClass,
-  difficulty: number,
   preferredRange: { start: number; end: number },
   dayClass: DayClass,
-  sessionsInPreferred: number,
 ): number {
   let score = 0;
 
-  // Tercih edilen saat dilimiyle örtüşme
   const overlapStart = Math.max(startMin, preferredRange.start);
-  const overlapEnd = Math.min(endMin, preferredRange.end);
-  const overlapMin = Math.max(0, overlapEnd - overlapStart);
-  const duration = endMin - startMin;
+  const overlapEnd   = Math.min(endMin,   preferredRange.end);
+  const overlapMin   = Math.max(0, overlapEnd - overlapStart);
+  const duration     = endMin - startMin;
   const overlapRatio = overlapMin / duration;
 
-  if (overlapRatio >= 1.0) score += 30;       // tam örtüşme
-  else if (overlapRatio >= 0.5) score += 15;  // kısmi örtüşme
-  else if (overlapRatio > 0) score += 5;      // az örtüşme
+  if      (overlapRatio >= 1.0) score += 30;
+  else if (overlapRatio >= 0.5) score += 15;
+  else if (overlapRatio >  0)   score += 5;
 
-  // AGIR ders tercih edilen saatteyse ekstra bonus
   if (lessonClass === 'AGIR' && overlapRatio >= 1.0) score += 20;
+  if (lessonClass === 'AGIR' && overlapRatio === 0)  score -= 15;
 
-  // AGIR ders tercih edilen saat dışındaysa ceza
-  if (lessonClass === 'AGIR' && overlapRatio === 0) score -= 15;
-
-  // Tercih saatine uzaklık bazlı fallback cezası (örtüşme yoksa uygulanır)
   if (overlapRatio === 0) {
     const dist = windowDistance(startMin, preferredRange);
-    if (dist === 1) score -= 5;
+    if      (dist === 1) score -= 5;
     else if (dist === 2) score -= 15;
-    else if (dist >= 3) score -= 25;
+    else if (dist >= 3)  score -= 25;
   }
 
-  // HAFIF ders tercih saati dışında → peak saatleri zor derslere bırak
   if (lessonClass === 'HAFIF' && overlapRatio === 0) score += 5;
-
-  // Rahat günde zor ders → ekstra bonus
-  if (lessonClass === 'AGIR' && dayClass === 'rahat') score += 15;
-
-  // Yorucu günde zor ders → ceza
-  if (lessonClass === 'AGIR' && dayClass === 'yorucu') score -= 20;
+  if (lessonClass === 'AGIR'  && dayClass === 'rahat')  score += 15;
+  if (lessonClass === 'AGIR'  && dayClass === 'yorucu') score -= 20;
 
   return score;
 }
 
-// Tüm candidate slotları üret (her free window içinde kaydırarak)
+// Tüm candidate slotları üret (her free window içinde 30 dk adımlarla kaydırarak)
 function generateCandidates(
   windows: TimeWindow[],
   neededMin: number,
@@ -202,7 +167,6 @@ function generateCandidates(
   const candidates: Array<{ windowIdx: number; startMin: number; endMin: number }> = [];
   for (let wi = 0; wi < windows.length; wi++) {
     const w = windows[wi];
-    // 30 dakika adımlarla kaydır
     for (let s = w.start; s + neededMin <= w.end; s += 30) {
       candidates.push({ windowIdx: wi, startMin: s, endMin: s + neededMin });
     }
@@ -220,31 +184,19 @@ function placeIntoWindows(
   blockCount: number,
   placed: PlacedBlock[],
   lessonClass: LessonClass,
-  difficulty: number,
   dayClass: DayClass,
-  sessionsInPreferred: number,
+  wave: 1 | 2 | 3 | 4,
 ): boolean {
   const candidates = generateCandidates(windows, neededMin);
   if (candidates.length === 0) return false;
 
-  // Her candidate için puan hesapla
   const scored = candidates.map((c) => ({
     ...c,
-    score: scoreCandidate(c.startMin, c.endMin, lessonClass, difficulty, preferredRange, dayClass, sessionsInPreferred),
+    score: scoreCandidate(c.startMin, c.endMin, lessonClass, preferredRange, dayClass),
   }));
-  
-  
-
-  // En yüksek puanlı candidate'i seç
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0];
 
-  console.log(`  Lesson ${lessonId} on ${day.date.toLocaleDateString()} (sessionsInPreferred=${sessionsInPreferred}):`);
-scored.slice(0, 3).forEach(c => {
-  console.log(`    ${Math.floor(c.startMin/60)}:${String(c.startMin%60).padStart(2,'0')} score=${c.score}`);
-});
-console.log(`    → chose ${Math.floor(best.startMin/60)}:${String(best.startMin%60).padStart(2,'0')}`);
-  // Seçilen slotu yerleştir ve pencereyi güncelle
   placed.push({
     lessonId,
     date: day.date,
@@ -252,52 +204,73 @@ console.log(`    → chose ${Math.floor(best.startMin/60)}:${String(best.startMi
     endMin: best.endMin,
     blockCount,
     isReview: false,
+    waveUsed: wave,
   });
-  windows.splice(best.windowIdx, 1, ...splitWindow(windows[best.windowIdx], best.startMin, best.endMin));
+  windows.splice(
+    best.windowIdx,
+    1,
+    ...splitWindow(windows[best.windowIdx], best.startMin, best.endMin),
+  );
   return true;
 }
 
-// Bir slotun tercih edilen saatte olup olmadığını kontrol et
-function isSlotInPreferred(startMin: number, endMin: number, preferredRange: { start: number; end: number }): boolean {
-  return Math.max(startMin, preferredRange.start) < Math.min(endMin, preferredRange.end);
+// ── PUAN SİSTEMİ ─────────────────────────────────────────────────────────────
+const WAVE_PENALTY: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 1, 3: 2, 4: 4 };
+
+function calcProgramLevel(
+  violationScore: number,
+  totalBlocks: number,
+): ProgramLevel {
+  if (totalBlocks === 0) return 'normal';
+  const ratio = violationScore / (totalBlocks * 4);
+  if (ratio < 0.15)  return 'normal';
+  if (ratio < 0.45)  return 'busy';
+  return 'very_busy';
 }
 
-// Tüm dersleri round-robin + gün/ders sınıfı eşleşmesi + kapasite kısıtlarıyla yerleştir
-export function step8Placement(
-  lessonOrder: Array<{ lessonId: number; slottedMode: boolean; difficulty: number; priority: string }>,
-  lessonAllocations: Record<number, number>,
+// ── ANA FONKSİYON ────────────────────────────────────────────────────────────
+
+interface LessonInput {
+  lessonId: number;
+  slottedMode: boolean;
+  difficulty: number;
+  priority: string;
+}
+
+interface PlacementResult {
+  placed: PlacedBlock[];
+  programScore: number;   // 0.0–1.0
+  programLevel: ProgramLevel;
+  forcedBlocks: number;   // dalga 3-4'ten geçen blok sayısı
+}
+
+// Bir dalga için round-robin: sığanları yerleştirir, sığmayanları döndürür.
+// allowConsecutive : AGIR art arda kısıtı görmezden gel
+// allowSessionOverflow: maxSessions sınırını aş
+function runWave(
+  wave: 1 | 2 | 3 | 4,
+  lessonOrder: LessonInput[],
+  remaining: Record<number, number>,
   dayConfigs: DayConfig[],
   freeWindows: Record<string, TimeWindow[]>,
-  preferredStudyTime: string,
-): { placed: PlacedBlock[]; notFitted: Record<number, number>; programZorlastu: boolean } {
-  const placed: PlacedBlock[] = [];
-  const notFitted: Record<number, number> = {};
-  const dayBlocksRemaining = dayConfigs.map((d) => d.maxBlocks);
-  const preferredRange = getPreferredRange(preferredStudyTime);
-  let programZorlastu = false;
-
-  // Her ders için kalan blok sayısı ve yerleştirildiği gün indeksleri
-  const remaining: Record<number, number> = {};
-  const placedDaysPerLesson: Record<number, Set<number>> = {};
-  // Her gün için tercih edilen saatte kaç oturum yerleştirildi
-  const daySessionsInPreferred: Record<number, number> = {};
-  for (let i = 0; i < dayConfigs.length; i++) daySessionsInPreferred[i] = 0;
-  for (const { lessonId } of lessonOrder) {
-    remaining[lessonId] = lessonAllocations[lessonId] ?? 0;
-    placedDaysPerLesson[lessonId] = new Set();
-  }
-
-  // Ders meta bilgilerini hızlı erişim için map'e al
+  preferredRange: { start: number; end: number },
+  dayBlocksRemaining: number[],
+  sessionsUsed: number[],
+  placedDaysPerLesson: Record<number, Set<number>>,
+  placed: PlacedBlock[],
+  allowConsecutive: boolean,
+  allowSessionOverflow: boolean,
+): void {
   const lessonMeta = new Map(
-    lessonOrder.map((l) => [l.lessonId, {
-      slottedMode: l.slottedMode,
-      lessonClass: classifyLesson(l.difficulty, l.priority),
-      preferredIntensity: getDayIntensity(DAY_PREFERENCE[classifyLesson(l.difficulty, l.priority)][0]),
-    }])
+    lessonOrder.map((l) => [
+      l.lessonId,
+      {
+        slottedMode: l.slottedMode,
+        lessonClass: classifyLesson(l.difficulty, l.priority),
+      },
+    ]),
   );
 
-  // Round-robin: her turda her ders için en uygun güne 1 oturum yerleştir.
-  // Tüm dersler dolana veya hiçbir ilerleme olmayana kadar döngü sürer.
   let progress = true;
   while (progress) {
     progress = false;
@@ -305,35 +278,48 @@ export function step8Placement(
     for (const { lessonId } of lessonOrder) {
       if (remaining[lessonId] <= 0) continue;
 
-      const meta = lessonMeta.get(lessonId)!;
-      const { slottedMode, lessonClass, preferredIntensity } = meta;
+      const { slottedMode, lessonClass } = lessonMeta.get(lessonId)!;
       const placedDays = placedDaysPerLesson[lessonId];
-      const dayOrder = getDayOrder(lessonClass, dayConfigs);
+
+      // Gün tercihi sırasına göre — dalga 1-2'de orijinal, 3-4'de kronolojik
+      const dayOrder =
+        wave <= 2
+          ? getDayOrder(lessonClass, dayConfigs)
+          : dayConfigs.map((_, idx) => ({
+              idx,
+              dayClass: getDayClass(dayConfigs[idx]),
+            }));
 
       for (const { idx: dayIdx, dayClass } of dayOrder) {
         if (remaining[lessonId] <= 0) break;
         if (dayBlocksRemaining[dayIdx] <= 0) continue;
-
-        // AGIR dersler: bir güne zaten yerleştirildiyse o gün atlanır
-        // (günlük max 1 oturum — LESSON_CLASS_CAP zaten bunu sınırlar ama
-        //  round-robin'de aynı derse aynı günde ikinci tur gelmemeli)
         if (placedDays.has(dayIdx)) continue;
 
-        // Slotlu mod: 3 üst üste gün oluşturma
-        if (slottedMode && creates3Consecutive(dayIdx, placedDays)) continue;
+        const effectiveMaxSessions = allowSessionOverflow
+          ? dayConfigs[dayIdx].maxSessions * 2
+          : dayConfigs[dayIdx].maxSessions;
 
-        // AGIR dersler arka arkaya gün almasın (slottedMode olmasa bile)
-        if (lessonClass === 'AGIR' && (placedDays.has(dayIdx - 1) || placedDays.has(dayIdx + 1))) continue;
+        if (sessionsUsed[dayIdx] >= effectiveMaxSessions) continue;
+
+        if (!allowConsecutive) {
+          // Slotlu mod: 3 üst üste gün kontrolü
+          if (slottedMode && creates3Consecutive(dayIdx, placedDays)) continue;
+          // AGIR ders art arda gün yasağı
+          if (
+            lessonClass === 'AGIR' &&
+            (placedDays.has(dayIdx - 1) || placedDays.has(dayIdx + 1))
+          ) continue;
+        }
 
         const day = dayConfigs[dayIdx];
-        const d = day.date; const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const d = day.date;
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const windows = freeWindows[dateStr] || [];
 
-        const toPlace = calcToPlace(
+        const toPlace = Math.min(
           remaining[lessonId],
           dayBlocksRemaining[dayIdx],
           day.maxBlocksPerSession,
-          lessonClass,
         );
         if (toPlace <= 0) continue;
 
@@ -346,39 +332,127 @@ export function step8Placement(
           toPlace,
           placed,
           lessonClass,
-          lessonOrder.find(l => l.lessonId === lessonId)!.difficulty,
           dayClass,
-          daySessionsInPreferred[dayIdx],
+          wave,
         );
 
         freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
 
         if (placedOk) {
-          if (getDayIntensity(dayClass) > preferredIntensity) programZorlastu = true;
           dayBlocksRemaining[dayIdx] -= toPlace;
-          remaining[lessonId] -= toPlace;
+          remaining[lessonId]        -= toPlace;
+          sessionsUsed[dayIdx]++;
           placedDays.add(dayIdx);
           progress = true;
-          // Tercih edilen saatte yerleştirildi mi? Sayacı güncelle
-          const lastPlaced = placed[placed.length - 1];
-          if (isSlotInPreferred(lastPlaced.startMin, lastPlaced.endMin, preferredRange)) {
-            daySessionsInPreferred[dayIdx]++;
-          }
           break;
         }
       }
     }
   }
+}
 
-  // Yerleştirilemeyen blokları kaydet
+export function step8Placement(
+  lessonOrder: LessonInput[],
+  lessonAllocations: Record<number, number>,
+  dayConfigs: DayConfig[],
+  freeWindows: Record<string, TimeWindow[]>,
+  preferredStudyTime: string,
+): PlacementResult {
+  const placed: PlacedBlock[] = [];
+  const preferredRange    = getPreferredRange(preferredStudyTime);
+  const dayBlocksRemaining = dayConfigs.map((d) => d.maxBlocks);
+  const sessionsUsed       = dayConfigs.map(() => 0);
+
+  const remaining: Record<number, number> = {};
+  const placedDaysPerLesson: Record<number, Set<number>> = {};
   for (const { lessonId } of lessonOrder) {
-    if (remaining[lessonId] > 0) {
-      notFitted[lessonId] = remaining[lessonId];
+    remaining[lessonId]        = lessonAllocations[lessonId] ?? 0;
+    placedDaysPerLesson[lessonId] = new Set();
+  }
+
+  const totalBlocks = Object.values(remaining).reduce((a, b) => a + b, 0);
+
+  const sharedArgs = [
+    lessonOrder,
+    remaining,
+    dayConfigs,
+    freeWindows,
+    preferredRange,
+    dayBlocksRemaining,
+    sessionsUsed,
+    placedDaysPerLesson,
+    placed,
+  ] as const;
+
+  // Dalga 1: tüm kısıtlar aktif
+  runWave(1, ...sharedArgs, false, false);
+
+  // Dalga 2: AGIR art arda + slotlu mod kısıtı kaldırıldı
+  runWave(2, ...sharedArgs, true, false);
+
+  // Dalga 3: art arda kısıt yok + maxSessions overflow
+  runWave(3, ...sharedArgs, true, true);
+
+  // Dalga 4: her şeyi zorla (dayBlocks bütçesi görmezden, her güne koy)
+  for (const { lessonId } of lessonOrder) {
+    if (remaining[lessonId] <= 0) continue;
+
+    for (let dayIdx = 0; dayIdx < dayConfigs.length; dayIdx++) {
+      if (remaining[lessonId] <= 0) break;
+
+      const day     = dayConfigs[dayIdx];
+      const d       = day.date;
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const windows = freeWindows[dateStr] || [];
+      const lessonClass = classifyLesson(
+        lessonOrder.find((l) => l.lessonId === lessonId)!.difficulty,
+        lessonOrder.find((l) => l.lessonId === lessonId)!.priority,
+      );
+      const dayClass = getDayClass(day);
+
+      const toPlace = Math.min(remaining[lessonId], day.maxBlocksPerSession);
+      if (toPlace <= 0) continue;
+
+      const placedOk = placeIntoWindows(
+        windows,
+        toPlace * 30,
+        preferredRange,
+        lessonId,
+        day,
+        toPlace,
+        placed,
+        lessonClass,
+        dayClass,
+        4,
+      );
+
+      freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
+
+      if (placedOk) {
+        dayBlocksRemaining[dayIdx] -= toPlace;
+        remaining[lessonId]        -= toPlace;
+        sessionsUsed[dayIdx]++;
+        placedDaysPerLesson[lessonId].add(dayIdx);
+      }
     }
   }
-  console.log('DAY REMAINING AFTER PLACEMENT:', dayConfigs.map((d, i) => ({
-  date: d.date.toLocaleDateString(),
-  remaining: dayBlocksRemaining[i]
-})));
-  return { placed, notFitted, programZorlastu };
+
+  // Puan hesabı
+  let violationScore = 0;
+  let forcedBlocks   = 0;
+  for (const block of placed) {
+    const wave = block.waveUsed ?? 1;
+    violationScore += WAVE_PENALTY[wave];
+    if (wave >= 3) forcedBlocks += block.blockCount;
+  }
+
+  const programLevel = calcProgramLevel(violationScore, totalBlocks);
+  const programScore =
+    totalBlocks > 0 ? violationScore / (totalBlocks * 4) : 0;
+
+  console.log(
+    `[STEP8] totalBlocks=${totalBlocks} violationScore=${violationScore} programScore=${programScore.toFixed(3)} level=${programLevel} forcedBlocks=${forcedBlocks}`,
+  );
+
+  return { placed, programScore, programLevel, forcedBlocks };
 }

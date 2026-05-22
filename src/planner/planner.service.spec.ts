@@ -141,7 +141,7 @@ describe('PlannerService', () => {
     });
   });
 
-  it('increments forced delay counters for lessons that do not fit during recalculate', async () => {
+  it('returns programLevel and does not call lesson.update when days are fully blocked', async () => {
     const prisma = createPrismaMock();
     prisma.scheduledBlock.findMany
       .mockResolvedValueOnce([{ lessonId: 7, blockCount: 3 }])
@@ -158,17 +158,12 @@ describe('PlannerService', () => {
     const service = new PlannerService(prisma as any);
     const result = await service.recalculate(1);
 
-    expect(result.notFitted).toEqual({ 7: 2 });
-    expect(prisma.lesson.update).toHaveBeenCalledWith({
-      where: { id: 7 },
-      data: {
-        zorunluDelayCount: { increment: 1 },
-        zorunluMissedBlocks: { increment: 2 },
-      },
-    });
+    expect(result.programLevel).toBeDefined();
+    expect(result.programScore).toBeDefined();
+    expect(prisma.lesson.update).not.toHaveBeenCalled();
   });
 
-  it('does not increment forced delay counters when recalculated lessons fit again', async () => {
+  it('places lessons and returns programLevel when recalculated lessons fit', async () => {
     const prisma = createPrismaMock();
     prisma.scheduledBlock.findMany
       .mockResolvedValueOnce([{ lessonId: 7, blockCount: 2 }])
@@ -184,7 +179,7 @@ describe('PlannerService', () => {
     const service = new PlannerService(prisma as any);
     const result = await service.recalculate(1);
 
-    expect(result.notFitted).toEqual({});
+    expect(result.programLevel).toBeDefined();
     expect(prisma.scheduledBlock.create).toHaveBeenCalled();
     expect(prisma.lesson.update).not.toHaveBeenCalled();
   });
