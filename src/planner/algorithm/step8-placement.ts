@@ -214,6 +214,117 @@ function placeIntoWindows(
   return true;
 }
 
+// ── KALİTE DEĞERLENDİRMESİ ───────────────────────────────────────────────────
+
+export type QualityLevel = 'good' | 'acceptable' | 'poor';
+
+export interface ScheduleQuality {
+  qualityScore: number;      // 0.0–1.0 genel kalite
+  qualityLevel: QualityLevel;
+  fitRate: number;           // yerleşen / istenen blok oranı
+  timingRate: number;        // tercih saatine giren blok oranı
+  dayMatchRate: number;      // ders sınıfı → gün tipi uyum oranı
+  densityScore: number;      // gün yoğunluğu dengesi
+}
+
+// Gün tipi uyum skoru: ders sınıfı × gün sınıfı kombinasyonu
+function dayMatchScore(lessonClass: LessonClass, dayClass: DayClass): number {
+  if (lessonClass === 'AGIR') {
+    if (dayClass === 'rahat')  return 1.0;
+    if (dayClass === 'normal') return 0.5;
+    return 0.0; // yorucu
+  }
+  if (lessonClass === 'ORTA') {
+    if (dayClass === 'normal') return 1.0;
+    if (dayClass === 'rahat')  return 0.7;
+    return 0.3; // yorucu
+  }
+  // HAFIF
+  if (dayClass === 'yorucu') return 1.0;
+  if (dayClass === 'normal') return 0.7;
+  return 0.4; // rahat
+}
+
+function evaluateScheduleQuality(
+  placed: PlacedBlock[],
+  lessonAllocations: Record<number, number>,
+  lessonOrder: LessonInput[],
+  dayConfigs: DayConfig[],
+  sessionsUsed: number[],
+  preferredRange: { start: number; end: number },
+): ScheduleQuality {
+  const lessonClassMap = new Map(
+    lessonOrder.map((l) => [l.lessonId, classifyLesson(l.difficulty, l.priority)]),
+  );
+  const dayDateMap = new Map(
+    dayConfigs.map((d, idx) => {
+      const dt = d.date;
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      return [key, idx];
+    }),
+  );
+
+  // 1. fitRate
+  const totalRequested = Object.values(lessonAllocations).reduce((a, b) => a + b, 0);
+  const totalPlaced    = placed.reduce((a, b) => a + b.blockCount, 0);
+  const fitRate        = totalRequested === 0 ? 1 : totalPlaced / totalRequested;
+
+  if (totalPlaced === 0) {
+    return { qualityScore: fitRate, qualityLevel: fitRate >= 0.8 ? 'good' : 'poor', fitRate, timingRate: 0, dayMatchRate: 0, densityScore: 0 };
+  }
+
+  // 2. timingRate — tercih saatiyle örtüşme ortalaması
+  let timingSum = 0;
+  let dayMatchSum = 0;
+
+  for (const block of placed) {
+    const overlapStart  = Math.max(block.startMin, preferredRange.start);
+    const overlapEnd    = Math.min(block.endMin,   preferredRange.end);
+    const overlapMin    = Math.max(0, overlapEnd - overlapStart);
+    const duration      = block.endMin - block.startMin;
+    const overlapRatio  = duration > 0 ? overlapMin / duration : 0;
+
+    timingSum += overlapRatio * block.blockCount;
+
+    // 3. dayMatchRate — ders sınıfı × gün tipi uyumu
+    const d = block.date;
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayIdx  = dayDateMap.get(dateStr);
+    const lessonClass = lessonClassMap.get(block.lessonId) ?? 'ORTA';
+    const dc = dayIdx !== undefined ? getDayClass(dayConfigs[dayIdx]) : 'normal';
+    dayMatchSum += dayMatchScore(lessonClass, dc) * block.blockCount;
+  }
+
+  const timingRate   = timingSum   / totalPlaced;
+  const dayMatchRate = dayMatchSum / totalPlaced;
+
+  // 4. densityScore — aktif günlerin yoğunluk dengesi
+  const activeDayScores: number[] = [];
+  for (let i = 0; i < dayConfigs.length; i++) {
+    if (sessionsUsed[i] === 0) continue;
+    const ratio = sessionsUsed[i] / dayConfigs[i].maxSessions;
+    activeDayScores.push(ratio <= 1 ? 1.0 : 1.0 / ratio);
+  }
+  const densityScore =
+    activeDayScores.length === 0
+      ? 1.0
+      : activeDayScores.reduce((a, b) => a + b, 0) / activeDayScores.length;
+
+  // 5. Birleşik skor
+  const qualityScore =
+    fitRate    * 0.40 +
+    timingRate * 0.25 +
+    dayMatchRate * 0.25 +
+    densityScore * 0.10;
+
+  const qualityLevel: QualityLevel =
+    qualityScore >= 0.80 ? 'good' :
+    qualityScore >= 0.50 ? 'acceptable' :
+    'poor';
+
+  return { qualityScore, qualityLevel, fitRate, timingRate, dayMatchRate, densityScore };
+}
+
 // ── PUAN SİSTEMİ ─────────────────────────────────────────────────────────────
 const WAVE_PENALTY: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 1, 3: 2, 4: 4 };
 
@@ -239,10 +350,11 @@ interface LessonInput {
 
 interface PlacementResult {
   placed: PlacedBlock[];
-  programScore: number;          // 0.0–1.0
+  programScore: number;          // 0.0–1.0 (dalga bazlı zorluk skoru)
   programLevel: ProgramLevel;
   forcedBlocks: number;          // dalga 3-4'ten geçen blok sayısı
   unplacedLessonIds: number[];   // hiç yerleştirilemeyen dersler
+  quality: ScheduleQuality;      // yerleşim kalitesi (fitRate, timingRate, dayMatch, density)
 }
 
 // Bir dalga için round-robin: sığanları yerleştirir, sığmayanları döndürür.
@@ -461,9 +573,21 @@ export function step8Placement(
   const programScore =
     totalBlocks > 0 ? violationScore / (totalBlocks * 4) : 0;
 
+  const quality = evaluateScheduleQuality(
+    placed,
+    lessonAllocations,
+    lessonOrder,
+    dayConfigs,
+    sessionsUsed,
+    preferredRange,
+  );
+
   console.log(
     `[STEP8] totalBlocks=${totalBlocks} violationScore=${violationScore} programScore=${programScore.toFixed(3)} level=${programLevel} forcedBlocks=${forcedBlocks} unplaced=${unplacedLessonIds.length}`,
   );
+  console.log(
+    `[STEP8] quality: score=${quality.qualityScore.toFixed(3)} level=${quality.qualityLevel} fit=${quality.fitRate.toFixed(2)} timing=${quality.timingRate.toFixed(2)} dayMatch=${quality.dayMatchRate.toFixed(2)} density=${quality.densityScore.toFixed(2)}`,
+  );
 
-  return { placed, programScore, programLevel, forcedBlocks, unplacedLessonIds };
+  return { placed, programScore, programLevel, forcedBlocks, unplacedLessonIds, quality };
 }

@@ -328,6 +328,7 @@ export class PlannerService {
       programLevel,
       forcedBlocks,
       unplacedLessonIds,
+      quality,
     } = step8Placement(
       cognitiveOrdered.map((l) => ({
         lessonId: l.lessonId,
@@ -381,7 +382,7 @@ export class PlannerService {
     }
 
     const weekBlocks = await this.getWeekBlocks(userId, now);
-    return { ...weekBlocks, programScore, programLevel, forcedBlocks, unplacedLessonIds };
+    return { ...weekBlocks, programScore, programLevel, forcedBlocks, unplacedLessonIds, quality };
   }
 
   // Haftanın planlanan bloklarını getir
