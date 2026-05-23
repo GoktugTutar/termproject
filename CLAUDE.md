@@ -48,19 +48,18 @@ termprojectFull/
 │   │   │   ├── planner.module.ts
 │   │   │   ├── planner.controller.ts
 │   │   │   ├── planner.service.ts
-│   │   │   ├── algorithm/
-│   │   │   │   ├── step0-burnout.ts
-│   │   │   │   ├── step1-multiplier.ts
-│   │   │   │   ├── step2-pool.ts
-│   │   │   │   ├── step3-review-blocks.ts
-│   │   │   │   ├── step4-calculate-x.ts
-│   │   │   │   ├── step5-day-distribution.ts
-│   │   │   │   ├── step6-priority.ts
-│   │   │   │   ├── step7-cognitive-load.ts
-│   │   │   │   ├── step7_5-place-review.ts
-│   │   │   │   ├── step8-placement.ts
-│   │   │   │   └── step9-recalculate.ts
-│   │   │   └── dto/
+│   │   │   └── algorithm/
+│   │   │       ├── step0-burnout.ts
+│   │   │       ├── step1-multiplier.ts
+│   │   │       ├── step2-pool.ts
+│   │   │       ├── step3-review-blocks.ts
+│   │   │       ├── step4-calculate-x.ts
+│   │   │       ├── step5-day-distribution.ts
+│   │   │       ├── step6-priority.ts
+│   │   │       ├── step7-cognitive-load.ts
+│   │   │       ├── step7_5-place-review.ts
+│   │   │       ├── step8-placement.ts
+│   │   │       └── step9-recalculate.ts
 │   │   ├── checklist/
 │   │   │   ├── checklist.module.ts
 │   │   │   ├── checklist.controller.ts
@@ -78,11 +77,6 @@ termprojectFull/
 │   │   │   ├── system-feedback.controller.ts
 │   │   │   ├── system-feedback.service.ts
 │   │   │   └── ai-prompt.ts
-│   │   ├── insight/                    # Insight engine — pattern tespiti + plan override
-│   │   │   ├── insight.module.ts
-│   │   │   ├── insight.controller.ts
-│   │   │   ├── insight.service.ts
-│   │   │   └── insight-engine.ts       # Tüm 6.1-6.22 + placement analytics kuralları
 │   │   ├── lesson/
 │   │   │   ├── lesson.module.ts
 │   │   │   ├── lesson.controller.ts
@@ -98,12 +92,14 @@ termprojectFull/
 │   │   ├── debug/                      # Sadece MODE=test — saat override endpoint'i
 │   │   │   └── debug.controller.ts
 │   │   └── utils/
-│   │       └── time.util.ts            # Zaman yönetimi (prod/test modu)
+│   │       ├── time.util.ts            # Zaman yönetimi (prod/test modu)
+│   │       └── first-week.util.ts      # İlk hafta tespiti (getLocalWeekStart, isFirstWeekDate)
 │   └── package.json
 └── termprojectui/                       # Flutter uygulaması
     └── lib/
         ├── main.dart
         ├── theme.dart
+        ├── avatar_page.dart             # Avatar oluşturma widget'ı (AvatarHeader)
         ├── core/
         │   ├── api_client.dart          # Tüm HTTP istekleri — tek merkezi API katmanı
         │   └── app_time.dart            # Frontend saat yönetimi (test modu)
@@ -113,10 +109,10 @@ termprojectFull/
         └── screens/
             ├── auth_screen.dart
             ├── main_scaffold.dart
+            ├── onboarding_screen.dart   # İlk kurulum sihirbazı (dersler + busy times)
             ├── today_screen.dart
             ├── week_screen.dart
             ├── schedule_screen.dart
-            ├── lessons_screen.dart
             ├── insights_screen.dart
             ├── profile_screen.dart      # Tercihler, busy slots, dönem yönetimi
             └── new_term_screen.dart     # Yeni dönem sihirbazı (ders ekleme akışı)
@@ -141,7 +137,6 @@ model User {
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
   profile            StudentProfile?
-  insights           UserInsight[]
 }
 
 model Term {
@@ -179,21 +174,6 @@ model StudentProfile {
   consistencyScore   Float    @default(0)
 
   totalSubmissions   Int      @default(0)
-
-  // Placement quality analytics (placement-score.md)
-  avgQualityRatio7d        Float   @default(0)
-  // JSON: { "lessonId": { avgRatio, avgL1, avgL2, avgL3, avgL4, sampleCount } }
-  lessonQualityScores      String  @default("{}")
-  // JSON: { "busySlotId": { withSlot, withoutSlot, delta } }
-  busySlotImpact           String  @default("{}")
-  // JSON: { "insightType_lessonId": { before, after, appliedAt } }
-  insightOverrideEffects   String  @default("{}")
-  // JSON: [{ weekStart, avgMaxPossible }] — son 4 hafta
-  maxPossibleTrend         String  @default("[]")
-
-  // Productivity pattern (insight 6.18)
-  // JSON: { "lessonId": { "morning": avgRating, "afternoon": ..., ... } }
-  lessonProductivityByWindow String @default("{}")
 }
 
 enum StudyTime {
@@ -234,12 +214,9 @@ model Lesson {
   zorunluDelayCount   Int                @default(0)
   zorunluMissedBlocks Int                @default(0)
   needsMoreTime       Int                @default(0)  // -1 | 0 | +1
-  targetGrade         Float?             // hedeflenen sınav notu (0-100)
   exams               LessonExam[]
   deadlines           LessonDeadline[]
   scheduledBlocks     ScheduledBlock[]
-  grades              LessonGrade[]
-  planOverride        LessonPlanOverride?
 }
 
 model LessonExam {
@@ -270,16 +247,6 @@ model ScheduledBlock {
   isReview         Boolean  @default(false)
   completed        Boolean  @default(false)
   weekStart        DateTime
-
-  // Placement score breakdown (placement-score.md)
-  placementLayer1  Int?     // temel tercih skoru
-  placementLayer2  Int?     // insight override katkısı
-  placementLayer3  Int?     // DOW bonus katkısı
-  placementLayer4  Int?     // bağlamsal skor katkısı
-  placementTotal   Int?     // layer1+2+3+4
-  placementMax     Int?     // teorik maksimum (o ders + o gün + aktif override'lar)
-  qualityRatio     Float?   // placementTotal / placementMax (0.0–1.0)
-  wasForced        Boolean  @default(false)  // qualityRatio < 0.35
 }
 
 model DailyChecklist {
@@ -300,7 +267,6 @@ model ChecklistItem {
   plannedBlocks      Int
   completedBlocks    Int            @default(0)
   delayed            Boolean        @default(false)
-  productivityRating Int?           // 1=düşük 2=orta 3=iyi; session sonrası opsiyonel
 }
 
 model WeeklyFeedback {
@@ -318,109 +284,6 @@ model LessonFeedback {
   weeklyFeedback   WeeklyFeedback @relation(fields: [weeklyFeedbackId], references: [id])
   lessonId         Int
   needsMoreTime    Int            // -1 | 0 | +1
-}
-
-model LessonGrade {
-  id               Int      @id @default(autoincrement())
-  lessonId         Int
-  lesson           Lesson   @relation(fields: [lessonId], references: [id])
-  examId           Int?     // LessonExam.id ile eşleştirilebilir (opsiyonel)
-  score            Float    // 0-100
-  achievementRatio Float    // score / lesson.targetGrade
-  gradedAt         DateTime
-}
-
-model UserInsight {
-  id                    Int         @id @default(autoincrement())
-  userId                Int
-  user                  User        @relation(fields: [userId], references: [id])
-  type                  InsightType
-  confidence            Float
-  title                 String
-  description           String
-  evidenceJson          Json
-  recommendedActionJson Json?
-  needsUserAnswer       Boolean     @default(false)
-  answered              Boolean     @default(false)
-  firstDetectedAt       DateTime    @default(now())
-  lastDetectedAt        DateTime    @default(now())
-  isActive              Boolean     @default(true)
-}
-
-model LessonPlanOverride {
-  id                    Int             @id @default(autoincrement())
-  lessonId              Int             @unique
-  lesson                Lesson          @relation(fields: [lessonId], references: [id])
-  maxSessionBlocks      Int?
-  preferEarlySlot       Boolean         @default(false)
-  avoidTimeAfter        String?         // "HH:MM"
-  dayPreferenceOverride String?         // JSON: ["rahat","yorucu","normal"]
-  addReviewBlock        Boolean         @default(false)
-  splitIntoShort        Boolean         @default(false)
-  examWeekCapReduction  Boolean         @default(false)
-  bestWindowForLesson   String?         // "morning"|"afternoon"|"evening"|"night"
-  worstWindowForLesson  String?
-  source                OverrideSource  @default(INSIGHT)
-  insightType           String
-  updatedAt             DateTime        @updatedAt
-}
-
-model PendingInsightQuestion {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  lessonId     Int?
-  insightType  String
-  questionText String
-  optionsJson  String   // JSON: [{label, value, planEffect}]
-  answered     Boolean  @default(false)
-  answerValue  String?
-  createdAt    DateTime @default(now())
-}
-
-enum OverrideSource {
-  INSIGHT        // sistem pattern tespit etti
-  USER_EXPLICIT  // kullanıcı doğrudan söyledi
-}
-
-enum InsightType {
-  // 6.1 - 6.9: Haftalık yük/completion çelişkileri
-  NEEDS_MORE_TIME_BUT_NOT_COMPLETING
-  OVERLOADED_BUT_COMPLETING
-  INSUFFICIENT_BUT_UNDER_COMPLETING
-  SUITABLE_BUT_RESCHEDULED_OFTEN
-  FREQUENT_DELAY_UNKNOWN_REASON
-  OVERLOADED_BUT_NEEDS_MORE_TIME
-  INSUFFICIENT_BUT_NO_CAPACITY
-  AVOIDING_CRITICAL_LESSONS
-  DELAYS_CAUSE_WEEKEND_OVERLOAD
-
-  // 6.10 - 6.17: Davranış örüntüleri
-  LONG_SESSION_SUCCESS
-  SHORT_SESSION_PREFERRED
-  HIGH_DOW_PERFORMANCE
-  NIGHT_SLOT_AVOIDANCE_NEEDED
-  EXAM_STRESS_COMPLETION_DROP
-  LOW_CONSISTENCY_PATTERN
-  HIGH_FATIGUE_HIGH_COMPLETION
-  SLEEP_DEFICIT_NOTIFICATION
-
-  // 6.18: Verim örüntüsü
-  SESSION_PRODUCTIVITY_PATTERN
-
-  // 6.19 - 6.22: Not analizi
-  GRADE_BELOW_TARGET_LOW_EFFORT
-  GRADE_BELOW_TARGET_HIGH_EFFORT
-  GRADE_ABOVE_TARGET_LOW_EFFORT
-  GRADE_TARGET_CONSISTENTLY_MISSED
-
-  // Placement analytics (placement-score.md)
-  PLACEMENT_QUALITY_DROPPING
-  CAPACITY_SHRINKING
-  BUSY_SLOT_BLOCKING
-  LESSON_CONSISTENTLY_MISPLACED
-  OVERRIDE_INEFFECTIVE
-  LAYER2_CONSISTENTLY_NEGATIVE
-  LAYER3_NOT_APPLYING
 }
 ```
 
@@ -486,6 +349,7 @@ enum InsightType {
 - İlk hafta `GET /checklist/status/:date` şu davranışı verir: `blocked=false`, `missingDates=[]`, `checklist=null`, `checklistDisabled=true`, `disabledReason="first_week"`.
 - İlk hafta `POST /checklist/submit` 400 döner: "İlk hafta checklist kapalı."
 - UI ilk hafta checklist paneli yerine bilgi paneli gösterir ve kullanıcıya adaptasyon haftasında checklist sunulmayacağını bildirir.
+- İlk hafta tespiti `utils/first-week.util.ts` içindeki `isFirstWeekDate()` fonksiyonuyla yapılır.
 
 ### Feedback
 
@@ -514,15 +378,6 @@ enum InsightType {
 | POST   | /lesson/:id/exam             | Sınav tarihi ekle                                  |
 | POST   | /lesson/:id/deadline         | Deadline / ödev ekle                               |
 | DELETE | /lesson/:id/deadline/:did    | Deadline sil                                       |
-| POST   | /lesson/:id/grade            | Sınav notu gir → LessonGrade kaydı + achievementRatio hesabı |
-
-### Insight
-
-| Method | Path                         | Açıklama                                                    |
-|--------|------------------------------|-------------------------------------------------------------|
-| GET    | /insight                     | Aktif UserInsight listesi (isActive=true)                   |
-| GET    | /insight/questions           | Cevaplanmamış PendingInsightQuestion listesi                |
-| POST   | /insight/answer/:id          | Soruyu yanıtla → LessonPlanOverride güncellenir             |
 
 ### Debug (korumasız — sadece MODE=test)
 
@@ -591,12 +446,6 @@ _override güncelleme: profil ekranındaki Edit butonuyla
 | `stressNearExam`            | Sınavı ≤7 gün kalan günlerdeki ortalama stres                              |
 | `consistencyScore`          | Son 14 günde en az 1 blok tamamlanan gün oranı (activeDays / 14)           |
 | `totalSubmissions`          | Toplam checklist gönderim sayısı                                           |
-| `avgQualityRatio7d`         | Son 7 günün ScheduledBlock.qualityRatio ortalaması                         |
-| `lessonQualityScores`       | Ders bazlı avgQualityRatio + katman ortalamaları (JSON)                    |
-| `busySlotImpact`            | Her busySlot için qualityRatio farkı: o slot olmayan vs olan günler (JSON) |
-| `insightOverrideEffects`    | Her override için before/after avgQualityRatio karşılaştırması (JSON)      |
-| `maxPossibleTrend`          | Son 4 hafta avgMaxPossible değerleri — kapasite daralıyor mu? (JSON)       |
-| `lessonProductivityByWindow`| Ders × zaman dilimi productivity ortalaması, ChecklistItem.productivityRating'den (JSON) |
 
 ---
 
@@ -873,7 +722,7 @@ DALGA 4 — zorlama (round-robin):
   programScore      : Float          — yoğunluk oranı
   programLevel      : string         — "normal" | "busy" | "very_busy"
   forcedBlocks      : Int            — dalga 3-4 üzerinden yerleşen blok sayısı
-  unplacedLessonIds : number[]       — hiçbir dalganın yerleştiremediği ders id'leri
+  unplacedLessonIds : number[]       — hiçbir dalgaya sığmayan ders id'leri
     → dolu = günler fiziksel olarak %100 meşgul
     → UI bu listeyi kullanıcıya bildirir
 ```
@@ -1086,10 +935,11 @@ Garanti: toplam her zaman hedef değere eşittir.
 
 1. **Tüm süre matematiği blok cinsindendir.** Ondalıklı blok yoktur; `Math.floor` veya `largestRemainder` kullanılır.
 2. **KRİTİK öncelik diğer tüm kurallara karşı kazanır.**
-3. **Her modül kendi klasöründe bağımsızdır:** `auth`, `user`, `planner`, `checklist`, `feedback`, `system-feedback`, `lesson`, `insight`, `prisma`, `debug`, `utils`.
+3. **Her modül kendi klasöründe bağımsızdır:** `auth`, `user`, `planner`, `checklist`, `feedback`, `system-feedback`, `lesson`, `prisma`, `debug`, `utils`.
 4. **Algoritma adımları `planner/algorithm/` altında ayrı dosyalardadır** (step0 … step9).
 5. **Her service'teki fonksiyona açıklama satırı yazılır.**
 6. **Tüm zaman operasyonları `getCurrentTime()` ile yapılır**, `new Date()` doğrudan kullanılmaz.
 7. **`JwtAuthGuard` tüm endpoint'lere uygulanır** — sadece `POST /auth/register` ve `POST /auth/login` korumasızdır. `/debug/*` endpoint'leri korumasız ama `MODE=test` kontrolü yapar.
 8. **`POST /debug/clock`** sadece `MODE=test` ortamında etki eder; `MODE=prod` ise isteği sessizce yok sayar.
 9. **Dönem (Term) mantığı:** `GET /lesson` ve `POST /lesson` her zaman aktif `Term` (`isActive=true`) üzerinden çalışır. Planlayıcı ve checklist yalnızca aktif dönemin derslerini görür. Eski dönemlerin verileri DB'de korunur, silinmez. `Lesson.termId=null` olan kayıtlar, dönem sistemi eklenmeden önce oluşturulmuş eski verilerdir.
+10. **İlk hafta tespiti `utils/first-week.util.ts` içindeki `isFirstWeekDate()` ile yapılır.** `new Date()` veya manuel hesaplama kullanılmaz.

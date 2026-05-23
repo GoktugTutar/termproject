@@ -17,7 +17,7 @@ export interface PlacedBlock {
   endMin: number;
   blockCount: number;
   isReview: boolean;
-  waveUsed?: 1 | 2 | 3 | 4; // hangi dalganın yerleştirdiği (review blokları için opsiyonel)
+  waveUsed?: 1 | 2 | 3 | 4 | 5; // hangi dalganın yerleştirdiği (review blokları için opsiyonel)
 }
 
 export type ProgramLevel = 'normal' | 'busy' | 'very_busy';
@@ -185,7 +185,7 @@ function placeIntoWindows(
   placed: PlacedBlock[],
   lessonClass: LessonClass,
   dayClass: DayClass,
-  wave: 1 | 2 | 3 | 4,
+  wave: 1 | 2 | 3 | 4 | 5,
 ): boolean {
   const candidates = generateCandidates(windows, neededMin);
   if (candidates.length === 0) return false;
@@ -326,14 +326,14 @@ function evaluateScheduleQuality(
 }
 
 // ── PUAN SİSTEMİ ─────────────────────────────────────────────────────────────
-const WAVE_PENALTY: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 1, 3: 2, 4: 4 };
+const WAVE_PENALTY: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 5 };
 
 function calcProgramLevel(
   violationScore: number,
   totalBlocks: number,
 ): ProgramLevel {
   if (totalBlocks === 0) return 'normal';
-  const ratio = violationScore / (totalBlocks * 4);
+  const ratio = violationScore / (totalBlocks * 5);
   if (ratio < 0.15)  return 'normal';
   if (ratio < 0.45)  return 'busy';
   return 'very_busy';
@@ -358,10 +358,11 @@ interface PlacementResult {
 }
 
 // Bir dalga için round-robin: sığanları yerleştirir, sığmayanları döndürür.
-// allowConsecutive : AGIR art arda kısıtı görmezden gel
+// allowConsecutive  : AGIR art arda kısıtı görmezden gel
 // allowSessionOverflow: maxSessions sınırını aş
+// stepDownToPlace   : pencereye sığmıyorsa toPlace'i 1'e kadar azaltarak dene
 function runWave(
-  wave: 1 | 2 | 3 | 4,
+  wave: 1 | 2 | 3 | 4 | 5,
   lessonOrder: LessonInput[],
   remaining: Record<number, number>,
   dayConfigs: DayConfig[],
@@ -373,6 +374,7 @@ function runWave(
   placed: PlacedBlock[],
   allowConsecutive: boolean,
   allowSessionOverflow: boolean,
+  stepDownToPlace: boolean,
 ): void {
   const lessonMeta = new Map(
     lessonOrder.map((l) => [
@@ -429,31 +431,33 @@ function runWave(
         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const windows = freeWindows[dateStr] || [];
 
-        const toPlace = Math.min(
+        const maxToPlace = Math.min(
           remaining[lessonId],
           dayBlocksRemaining[dayIdx],
           day.maxBlocksPerSession,
         );
-        if (toPlace <= 0) continue;
+        if (maxToPlace <= 0) continue;
 
-        const placedOk = placeIntoWindows(
-          windows,
-          toPlace * 30,
-          preferredRange,
-          lessonId,
-          day,
-          toPlace,
-          placed,
-          lessonClass,
-          dayClass,
-          wave,
-        );
+        let placedOk = false;
+        let actualToPlace = maxToPlace;
+
+        if (stepDownToPlace) {
+          for (let tp = maxToPlace; tp >= 1; tp--) {
+            if (placeIntoWindows(windows, tp * 30, preferredRange, lessonId, day, tp, placed, lessonClass, dayClass, wave)) {
+              placedOk = true;
+              actualToPlace = tp;
+              break;
+            }
+          }
+        } else {
+          placedOk = placeIntoWindows(windows, maxToPlace * 30, preferredRange, lessonId, day, maxToPlace, placed, lessonClass, dayClass, wave);
+        }
 
         freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
 
         if (placedOk) {
-          dayBlocksRemaining[dayIdx] -= toPlace;
-          remaining[lessonId]        -= toPlace;
+          dayBlocksRemaining[dayIdx] -= actualToPlace;
+          remaining[lessonId]        -= actualToPlace;
           sessionsUsed[dayIdx]++;
           placedDays.add(dayIdx);
           progress = true;
@@ -498,59 +502,59 @@ export function step8Placement(
   ] as const;
 
   // Dalga 1: tüm kısıtlar aktif
-  runWave(1, ...sharedArgs, false, false);
+  runWave(1, ...sharedArgs, false, false, false);
 
   // Dalga 2: AGIR art arda + slotlu mod kısıtı kaldırıldı
-  runWave(2, ...sharedArgs, true, false);
+  runWave(2, ...sharedArgs, true, false, false);
 
-  // Dalga 3: art arda kısıt yok + maxSessions overflow
-  runWave(3, ...sharedArgs, true, true);
+  // Dalga 3: küçük pencere — toPlace maxBPS'den 1'e kadar azaltarak dene
+  runWave(3, ...sharedArgs, true, false, true);
 
-  // Dalga 4: her şeyi zorla (dayBlocks bütçesi görmezden) — round-robin
-  const wave4Meta = new Map(
+  // Dalga 4: art arda kısıt yok + maxSessions overflow
+  runWave(4, ...sharedArgs, true, true, false);
+
+  // Dalga 5: her şeyi zorla (dayBlocks bütçesi görmezden) — round-robin + step-down
+  const wave5Meta = new Map(
     lessonOrder.map((l) => [l.lessonId, classifyLesson(l.difficulty, l.priority)]),
   );
-  let wave4Progress = true;
-  while (wave4Progress) {
-    wave4Progress = false;
+  let wave5Progress = true;
+  while (wave5Progress) {
+    wave5Progress = false;
 
     for (const { lessonId } of lessonOrder) {
       if (remaining[lessonId] <= 0) continue;
 
-      const lessonClass = wave4Meta.get(lessonId)!;
+      const lessonClass = wave5Meta.get(lessonId)!;
 
       for (let dayIdx = 0; dayIdx < dayConfigs.length; dayIdx++) {
-        const day     = dayConfigs[dayIdx];
-        const d       = day.date;
-        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const windows = freeWindows[dateStr] || [];
+        const day      = dayConfigs[dayIdx];
+        const d        = day.date;
+        const dateStr  = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const windows  = freeWindows[dateStr] || [];
         const dayClass = getDayClass(day);
 
-        const toPlace = Math.min(remaining[lessonId], day.maxBlocksPerSession);
-        if (toPlace <= 0) continue;
+        const maxToPlace = Math.min(remaining[lessonId], day.maxBlocksPerSession);
+        if (maxToPlace <= 0) continue;
 
-        const placedOk = placeIntoWindows(
-          windows,
-          toPlace * 30,
-          preferredRange,
-          lessonId,
-          day,
-          toPlace,
-          placed,
-          lessonClass,
-          dayClass,
-          4,
-        );
+        let placedOk = false;
+        let actualToPlace = maxToPlace;
+        for (let tp = maxToPlace; tp >= 1; tp--) {
+          if (placeIntoWindows(windows, tp * 30, preferredRange, lessonId, day, tp, placed, lessonClass, dayClass, 5)) {
+            placedOk = true;
+            actualToPlace = tp;
+            break;
+          }
+        }
 
         freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
 
         if (placedOk) {
-          dayBlocksRemaining[dayIdx] -= toPlace;
-          remaining[lessonId]        -= toPlace;
+          dayBlocksRemaining[dayIdx] -= actualToPlace;
+          remaining[lessonId]        -= actualToPlace;
           sessionsUsed[dayIdx]++;
           placedDaysPerLesson[lessonId].add(dayIdx);
-          wave4Progress = true;
-          break; // bu ders için bir session yerleşti, sıradaki derse geç
+          wave5Progress = true;
+          break;
         }
       }
     }
@@ -562,7 +566,7 @@ export function step8Placement(
   for (const block of placed) {
     const wave = block.waveUsed ?? 1;
     violationScore += WAVE_PENALTY[wave];
-    if (wave >= 3) forcedBlocks += block.blockCount;
+    if (wave >= 4) forcedBlocks += block.blockCount;
   }
 
   const unplacedLessonIds = Object.entries(remaining)
@@ -571,7 +575,7 @@ export function step8Placement(
 
   const programLevel = calcProgramLevel(violationScore, totalBlocks);
   const programScore =
-    totalBlocks > 0 ? violationScore / (totalBlocks * 4) : 0;
+    totalBlocks > 0 ? violationScore / (totalBlocks * 5) : 0;
 
   const quality = evaluateScheduleQuality(
     placed,
@@ -583,7 +587,7 @@ export function step8Placement(
   );
 
   console.log(
-    `[STEP8] totalBlocks=${totalBlocks} violationScore=${violationScore} programScore=${programScore.toFixed(3)} level=${programLevel} forcedBlocks=${forcedBlocks} unplaced=${unplacedLessonIds.length}`,
+    `[STEP8] totalBlocks=${totalBlocks} violationScore=${violationScore} programScore=${programScore.toFixed(3)} level=${programLevel} forcedBlocks=${forcedBlocks} unplaced=${unplacedLessonIds.length} (5-wave system)`,
   );
   console.log(
     `[STEP8] quality: score=${quality.qualityScore.toFixed(3)} level=${quality.qualityLevel} fit=${quality.fitRate.toFixed(2)} timing=${quality.timingRate.toFixed(2)} dayMatch=${quality.dayMatchRate.toFixed(2)} density=${quality.densityScore.toFixed(2)}`,
