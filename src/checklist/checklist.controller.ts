@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Param,
-  UseGuards,
-  Request,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ChecklistService } from './checklist.service';
 import { SubmitChecklistDto } from './dto/submit-checklist.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -34,7 +26,19 @@ export class ChecklistController {
     return this.checklistService.getStatus(req.user.id, date);
   }
 
-  // Tarihe göre checklist getir
+  // Bugün uyku sorusu soruldu mu?
+  @Get('sleep/status')
+  getSleepStatus(@Request() req) {
+    return this.checklistService.getSleepStatus(req.user.id);
+  }
+
+  // Sabah uyku cevabını kaydet — { sleptWell: boolean }
+  @Post('sleep')
+  submitSleep(@Request() req, @Body() body: { sleptWell: boolean }) {
+    return this.checklistService.submitSleep(req.user.id, body.sleptWell);
+  }
+
+  // Tarihe göre checklist getir — en altta olmalı (wildcard çakışmasın)
   @Get(':date')
   getByDate(@Request() req, @Param('date') date: string) {
     return this.checklistService.getByDate(req.user.id, date);
