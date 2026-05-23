@@ -711,21 +711,24 @@ Zorunlu telafi (önceki haftadan):
 ```
 Her gün için:
   avgFatigue[gün] = busySlot fatigueLevel ortalaması (busySlot yoksa = 1)
-  weight[gün]     = 6 − avgFatigue[gün]
+  isCokYorucu     = avgFatigue ≥ 4
+  isRahat         = avgFatigue ≤ 2
 
-Oransal dağıtım:
-  dayBlocks[gün] = floor(effectiveBlocks × weight[gün] / Σ weight)
+studyStyle → baz session yapısı:
+  deep_focus   → baseMaxSessions = 1, baseMaxBlocksPerSession = min(4, burnout sınırı)
+  distributed  → baseMaxSessions = 3, baseMaxBlocksPerSession = min(2, burnout sınırı)
+  normal       → baseMaxSessions = 2, baseMaxBlocksPerSession = min(3, burnout sınırı)
 
-Kalan bloklar largest-remainder ile en yüksek weight'li günlere +1 eklenir.
-Garanti: Σ dayBlocks = effectiveBlocks
+Ders sayısına göre session garantisi:
+  minRequiredSessions = ceil(lessonCount / daysAvailable)
+  maxSessions         = max(baseMaxSessions, minRequiredSessions)
+    → Bu sayede deep_focus modunda bile her ders en az 1 güne sığabilir.
 
-studyStyle kuralları (gün tipi belirlendikten sonra):
-  deep_focus   → maxSessions = 1, maxBlocksPerSession = 4
-  distributed  → maxSessions = 3, maxBlocksPerSession = 2
-  normal       → maxSessions = 2, maxBlocksPerSession = 3
+Günlük blok kapasitesi:
+  maxBlocks = maxSessions × maxBlocksPerSession
 
-cok_yorucu_gun (avgFatigue ≥ 4): maxSessions = 1
-rahat_gun      (avgFatigue ≤ 2): maxSessions upper limit kalkar (studyStyle belirler)
+NOT: cokYorucu günlerde maxSessions ayrıca kısıtlanmaz.
+     isCokYorucu / isRahat yalnızca ADIM 8'deki gün sınıfı tespitinde kullanılır.
 ```
 
 ### ADIM 6 — Ders Öncelik Sırası
@@ -789,9 +792,9 @@ Her ders için (sınavı bu hafta olanlar), her atanan tekrar günü için:
 
 ```
 ── GÜN SINIFI ────────────────────────────────────────────────────────
-  avgFatigue ≤ 2  →  rahat   (yoğunluk 1)
-  avgFatigue = 3  →  normal  (yoğunluk 2)
-  avgFatigue ≥ 4  →  yorucu  (yoğunluk 3)
+  avgFatigue ≤ 2  →  rahat
+  avgFatigue = 3  →  normal
+  avgFatigue ≥ 4  →  yorucu
 
 ── DERS SINIFI ───────────────────────────────────────────────────────
   difficulty ≥ 4  VEYA  öncelik = KRİTİK  →  AGIR   (tercih: rahat)
@@ -803,70 +806,76 @@ Her ders için (sınavı bu hafta olanlar), her atanan tekrar günü için:
   ORTA   → normal → rahat   → yorucu
   HAFIF  → yorucu → normal  → rahat
 
-── DERS SINIFI OTURUM SINIRLARI (LESSON_CLASS_CAP) ──────────────────
-  AGIR  → max 1 blok/oturum
-  ORTA  → max 2 blok/oturum
-  HAFIF → sınır yok (day.maxBlocksPerSession'a bırakılır)
+── BLOK HESABI ───────────────────────────────────────────────────────
+  toPlace = min(kalan, dayBlocksRemaining, day.maxBlocksPerSession)
+  NOT: LESSON_CLASS_CAP yoktur; oturum uzunluğu yalnızca studyStyle ile belirlenir.
 
-  toPlace = min(kalan, dayBlocksRemaining, day.maxBlocksPerSession, LESSON_CLASS_CAP)
-
-── ROUND-ROBIN YERLEŞTİRME ──────────────────────────────────────────
+── 4 DALGALI ROUND-ROBIN YERLEŞTİRME ───────────────────────────────
 freeWindows = 08:00–00:00 − busySlotlar (merge edilmiş)
 
-WHILE (ilerleme var):
-  FOR her ders (öncelik sırasına göre):
-    kalan = 0 → atla
+Her dalga WHILE (ilerleme var) döngüsüyle çalışır:
+  her turda her ders için en fazla 1 session yerleştirilir, sonra sıradaki derse geçilir.
 
-    FOR her gün in dayOrder (tercih sırasına göre):
-      dayBlocksRemaining[gün] = 0 → atla
-      placedDays içinde bu gün zaten var → atla   (günde 1 oturum)
+DALGA 1 — tüm kısıtlar aktif:
+  • dayBlocksRemaining ≤ 0  → atla
+  • placedDays.has(gün)     → atla  (aynı ders o güne 1 oturumdan fazla girmez)
+  • sessionsUsed ≥ maxSessions → atla
+  • AGIR ders + bitişik güne zaten yerleşti → atla
+  • slottedMode + 3 üst üste gün oluşuyor → atla
+  • Gün sırası: getDayOrder() — tercih sınıfına göre
 
-      slotlu mod aktifse ve 3 üst üste gün oluşuyorsa → atla
+DALGA 2 — art arda kısıtlar kaldırıldı:
+  Dalga 1 ile aynı, fark:
+  • AGIR art arda yasağı → YOK
+  • slottedMode 3'lü zincir → YOK
 
-      AGIR ders: bitişik güne (dayIdx-1 veya dayIdx+1) zaten yerleşti → atla
-        (slottedMode olmadan da AGIR dersler art arda yerleştirilmez)
+DALGA 3 — session overflow:
+  Dalga 2 ile aynı, fark:
+  • effectiveMaxSessions = maxSessions × 2
+  • Gün sırası: kronolojik (tercih sırasına bakılmaz)
 
-      toPlace = calcToPlace(kalan, dayBlocksRemaining, maxBlocksPerSession, LESSON_CLASS_CAP)
-
-      Candidate slot listesi üret (freeWindows içinde 30 dk adımlarla kaydır)
-      Her candidate için scoreCandidate() ile puan hesapla
-      En yüksek puanlı slotu seç ve yerleştir
-
-      Başarılıysa:
-        → dayBlocksRemaining[gün] -= toPlace
-        → kalan -= toPlace
-        → placedDays.add(gün)
-        → ilerleme = true
-        → gün yoğunluğu > ders tercih yoğunluğu ise: programZorlastu = true
-        → yerleştirilen slot preferredRange içindeyse: daySessionsInPreferred[gün]++
-        → sonraki derse geç (break)
-
-WHILE sonu → kalan > 0 olan dersler → notFitted kaydına ekle
+DALGA 4 — zorlama (round-robin):
+  • dayBlocksRemaining, sessionsUsed, placedDays, art arda kontrolleri → YOK
+  • Gün sırası: kronolojik
+  • toPlace = min(kalan, day.maxBlocksPerSession)
+  • Tek kalan kısıt: fiziksel boş slot (placeIntoWindows)
+  • Round-robin: her ders 1 session → sıradaki derse geç
 
 ── SLOT PUANLAMA (scoreCandidate) ────────────────────────────────────
   Tercih saat örtüşmesi:
-    tam örtüşme (≥1.0)      →  +30
-    kısmi örtüşme (≥0.5)   →  +15
-    az örtüşme  (>0)        →  +5
+    tam örtüşme (≥1.0)     →  +30
+    kısmi örtüşme (≥0.5)  →  +15
+    az örtüşme  (>0)       →  +5
 
-  AGIR + tam örtüşme        →  +20 (ek bonus)
-  AGIR + örtüşme yok        →  −15
-  HAFIF + örtüşme yok       →  +5 (zor derslere peak saat bırakılır)
+  AGIR + tam örtüşme       →  +20 (ek bonus)
+  AGIR + örtüşme yok       →  −15
+  HAFIF + örtüşme yok      →  +5 (zor derslere peak saat bırakılır)
 
-  Örtüşme yoksa → pencere uzaklığına göre ek ceza (windowDistance):
+  Örtüşme yoksa → pencere uzaklığına göre ek ceza:
     1 pencere uzakta  →  −5
     2 pencere uzakta  →  −15
     3+ pencere uzakta →  −25
   (Pencere sırası: morning 08–11, afternoon 12–15, evening 18–21, night 21–24)
 
-  AGIR + rahat gün          →  +15
-  AGIR + yorucu gün         →  −20
+  AGIR + rahat gün         →  +15
+  AGIR + yorucu gün        →  −20
 
-── PROGRAM ZORLAŞTI FEEDBACK ─────────────────────────────────────────
-  programZorlastu = true ise:
-    POST /planner/create yanıtında programZorlastu: true döner.
-    Mesaj: "Bu hafta ders programı biraz zorlaştı.
-            Zor dersler meşgul günlere sığdırıldı — yoğun bir hafta olabilir."
+── PROGRAM PUANLAMA ──────────────────────────────────────────────────
+  Dalga cezaları:  dalga1=0, dalga2=1, dalga3=2, dalga4=4
+  violationScore  = Σ WAVE_PENALTY[block.waveUsed]
+  programScore    = violationScore / (totalBlocks × 4)   (0.0–1.0)
+  programLevel:
+    < 0.15  → "normal"
+    < 0.45  → "busy"
+    ≥ 0.45  → "very_busy"
+
+── YANIT ALANLARI ────────────────────────────────────────────────────
+  programScore      : Float          — yoğunluk oranı
+  programLevel      : string         — "normal" | "busy" | "very_busy"
+  forcedBlocks      : Int            — dalga 3-4 üzerinden yerleşen blok sayısı
+  unplacedLessonIds : number[]       — hiçbir dalganın yerleştiremediği ders id'leri
+    → dolu = günler fiziksel olarak %100 meşgul
+    → UI bu listeyi kullanıcıya bildirir
 ```
 
 ### ADIM 9 — Hafta İçi Yeniden Hesaplama
@@ -904,9 +913,9 @@ Request body:
 
 8. ADIM 3-8 yerleştirme mantığı sadece recalcStart-Pazar aralığına uygulanır.
 
-9. Recalculate çağrısında yalnızca yeniden yerleştirilemeyen dersler `notFitted`
-   response alanıyla UI'a bildirilir ve `zorunluDelayCount` / `zorunluMissedBlocks`
-   sayaçlarını artırır. Yeni slota yerleşen dersler sayaç artırmaz.
+9. Recalculate çağrısında hiçbir dalgaya sığmayan dersler `unplacedLessonIds`
+   alanıyla yanıtta döner. UI bu listeyi kullanıcıya gösterir.
+   zorunluDelayCount / zorunluMissedBlocks sayaçları artık otomatik güncellenmez.
 ```
 
 ---
@@ -983,8 +992,9 @@ Claude Haiku bu verilere bakarak Türkçe motive edici / uyarıcı bir metin ür
 
 ```
 Planlama olayları:
-  notFittedLessons   → bu hafta sığmayan dersler ve eksik blok sayısı
-  programZorlastu    → ağır dersler meşgul günlere taşındı mı
+  unplacedLessonIds  → hiçbir dalgaya sığmayan ders id'leri
+  programLevel       → "normal" | "busy" | "very_busy" (yoğunluk seviyesi)
+  forcedBlocks       → dalga 3-4 üzerinden zorla yerleşen blok sayısı
 
 Kullanıcı takibi (StudentProfile):
   weekCompletionRate → son 7 gün tamamlanan / planlanan blok oranı
@@ -1003,7 +1013,7 @@ Geçmiş:
 
 ```
 T1 — Sığmayan ders:
-  notFittedLessons listesi doluysa → prompt'a eklenir
+  unplacedLessonIds listesi doluysa → prompt'a eklenir
 
 T2 — Kronik yetersizlik:
   Son 3 haftada weekCompletionRate < 0.6 → prompt'a eklenir
@@ -1015,7 +1025,7 @@ T3 — Aşırı yük:
 T4-C1 — needsMoreTime=+1 ama blok karşılanamadı → prompt'a eklenir
 T4-C2 — keyfiDelayCount ≥ 2 VE son 2 hafta completion < 0.5 → prompt'a eklenir
 T4-C3 — U ≤ 7 VE allLessonAllocatedTime < 4 blok → prompt'a eklenir
-T5    — programZorlastu = true → prompt'a eklenir
+T5    — programLevel = "busy" veya "very_busy" → prompt'a eklenir
 ```
 
 ---
@@ -1061,13 +1071,14 @@ Garanti: toplam her zaman hedef değere eşittir.
 | effectiveBlocks       | ADIM 2 çıktısı       | ADIM 3,4,5 — tüm dağıtımın temeli               |
 | examDate + difficulty | LessonExam, Lesson   | ADIM 3 — tekrar bloğu · ADIM 7.5 — yerleştirme |
 | needsMoreTime         | WeeklyFeedback       | ADIM 4 — weight (delay=0 ise)                   |
-| fatigueLevel          | UserBusySlot         | ADIM 5 — gün ağırlığı                           |
+| fatigueLevel          | UserBusySlot         | ADIM 5 — gün sınıfı (rahat/normal/yorucu)       |
 | preferredStudyTime    | User                 | ADIM 7.5, 8 — peak slot seçimi                  |
 | keyfiDelayCount       | Lesson               | ADIM 4 weight + ADIM 6 öncelik + slotlu mod     |
 | zorunluDelayCount     | Lesson               | ADIM 4 weight + ADIM 6 öncelik + telafi bloğu   |
 | U (sınava kalan gün)  | calculateU(lesson)   | ADIM 6 — öncelik kademesi                       |
 | difficulty            | Lesson               | ADIM 6,7 — öncelik + bilişsel yük               |
-| studyStyle            | User                 | ADIM 5 — session yapısı                         |
+| studyStyle            | User                 | ADIM 5 — session yapısı (maxSessions, maxBlocksPerSession) |
+| lessonCount           | User.lessons         | ADIM 5 — minRequiredSessions garantisi          |
 
 ---
 

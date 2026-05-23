@@ -138,7 +138,10 @@ export class PlannerService {
       where: { id: userId },
       include: {
         busySlots: true,
-        lessons: { include: { exams: true, deadlines: true } },
+        lessons: {
+          where: { term: { isActive: true } },
+          include: { exams: true, deadlines: true },
+        },
         weeklyFeedbacks: { orderBy: { weekStart: 'desc' }, take: 1 },
         checklists: {
           where: {
@@ -220,12 +223,17 @@ export class PlannerService {
       ? weekDays.filter((day) => day.date.getTime() >= partialStart.getTime())
       : weekDays;
 
+    // Hafta öncesi Cmt/Paz için review penceresi: weekStart − 2 gün
+    const reviewWindowStart = new Date(weekStart);
+    reviewWindowStart.setDate(reviewWindowStart.getDate() - 2);
+
     // ADIM 3: Sınav tekrar bloklarını ayır
     const { reviewBlocks, reservedByLesson } = step3ReviewBlocks(
       user.lessons,
       effectiveBlocks,
       weekStart,
       weekEnd,
+      reviewWindowStart,
     );
 
     // ADIM 4: Her ders için blok tahsisi hesapla (override varsa step4 atlanır)
@@ -278,6 +286,27 @@ export class PlannerService {
         })),
       );
       freeWindows[dateStr] = this.getFreeWindows(mergedBusy);
+    }
+
+    // Hafta öncesi Cmt/Paz günlerini sadece review yerleştirme için freeWindows'a ekle.
+    // dayConfigs'e girmezler → ADIM 8 normal ders bloğu koymaz.
+    // Geçmiş günler atlanır; partial modda zaten planningDays içindeyse tekrar eklenmez.
+    const todayStart = this.startOfLocalDay(now);
+    for (let offset = -2; offset < 0; offset++) {
+      const preDate = new Date(weekStart);
+      preDate.setDate(preDate.getDate() + offset);
+      if (preDate.getTime() < todayStart.getTime()) continue;
+      const dateStr = this.toLocalDateStr(preDate);
+      if (freeWindows[dateStr]) continue;
+      const dow = preDate.getDay() === 0 ? 7 : preDate.getDay();
+      const preBusy = user.busySlots.filter((s) =>
+        this.busySlotAppliesToDate(s, preDate, dow),
+      );
+      freeWindows[dateStr] = this.getFreeWindows(
+        this.mergeBusySlots(
+          preBusy.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
+        ),
+      );
     }
 
     // ADIM 7.5: Tekrar bloklarını önce yerleştir

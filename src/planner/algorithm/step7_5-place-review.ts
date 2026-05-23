@@ -75,7 +75,14 @@ export function step7_5PlaceReview(
 
     updatedFreeWindows[dateStr] = windows.filter((w) => w.end > w.start);
 
-    // Review bloklar ekstra çalışmadır — haftalık tahsisten düşülmez
+    // Yerleştirilen tekrar bloğu kadar dersin normal tahsisinden düş.
+    // Sığmazsa tahsis değişmez (normal çalışma korunur).
+    if (placedOk && updatedAllocations[rb.lessonId] !== undefined) {
+      updatedAllocations[rb.lessonId] = Math.max(
+        0,
+        updatedAllocations[rb.lessonId] - rb.blocks,
+      );
+    }
   }
 
   return { placed, updatedAllocations, updatedFreeWindows };

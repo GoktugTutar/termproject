@@ -5,6 +5,8 @@ export interface ReviewBlock {
   blocks: number;
 }
 
+// reviewWindowStart: tekrar bloğu yerleştirilebilecek en erken tarih.
+// Varsayılan weekStart'tır; hafta öncesi Cmt/Paz için weekStart-2 geçilebilir.
 export function step3ReviewBlocks(
   lessons: Array<{
     id: number;
@@ -14,16 +16,22 @@ export function step3ReviewBlocks(
   effectiveBlocks: number,
   weekStart: Date,
   weekEnd: Date,
+  reviewWindowStart?: Date,
 ): { reviewBlocks: ReviewBlock[]; reservedByLesson: Record<number, number> } {
   const totalDifficulty = lessons.reduce((sum, l) => sum + l.difficulty, 0);
   const reviewBlocks: ReviewBlock[] = [];
   const reservedByLesson: Record<number, number> = {};
+  const windowStart = reviewWindowStart ?? weekStart;
+
+  // Sonraki haftanın ilk 2 gününe bak: o sınavların tekrar bloğu bu haftaya sığabilir
+  const lookaheadEnd = new Date(weekEnd);
+  lookaheadEnd.setDate(lookaheadEnd.getDate() + 2);
 
   for (const lesson of lessons) {
-    // Bu hafta içinde sınavı olan dersler için tekrar bloğu oluştur
+    // Bu hafta + sonraki 2 gün içinde sınavı olan dersler için tekrar bloğu oluştur
     const examsThisWeek = lesson.exams.filter((e) => {
       const d = new Date(e.examDate);
-      return d >= weekStart && d <= weekEnd;
+      return d >= weekStart && d <= lookaheadEnd;
     });
 
     if (examsThisWeek.length === 0) continue;
@@ -39,7 +47,8 @@ export function step3ReviewBlocks(
       // Zorluk < 4: Sınav günü -1'e %25 tekrar bloğu
       const day1 = new Date(examDate);
       day1.setDate(day1.getDate() - 1);
-      if (day1 >= weekStart) {
+      // Üst sınır weekEnd: tekrar bloğunu bir sonraki haftaya taşıma
+      if (day1 >= windowStart && day1 <= weekEnd) {
         const blocks = Math.max(1, Math.min(4, Math.round(reviewBase * 0.25)));
         reviewBlocks.push({ lessonId: lesson.id, date: day1, blocks });
         totalReserved += blocks;
@@ -48,7 +57,7 @@ export function step3ReviewBlocks(
       // Zorluk >= 4: Sınav günü -1 ve -2'ye %20'şer tekrar bloğu
       const day1 = new Date(examDate);
       day1.setDate(day1.getDate() - 1);
-      if (day1 >= weekStart) {
+      if (day1 >= windowStart && day1 <= weekEnd) {
         const blocks = Math.max(1, Math.min(4, Math.round(reviewBase * 0.20)));
         reviewBlocks.push({ lessonId: lesson.id, date: day1, blocks });
         totalReserved += blocks;
@@ -56,14 +65,16 @@ export function step3ReviewBlocks(
 
       const day2 = new Date(examDate);
       day2.setDate(day2.getDate() - 2);
-      if (day2 >= weekStart) {
+      if (day2 >= windowStart && day2 <= weekEnd) {
         const blocks = Math.max(1, Math.min(4, Math.round(reviewBase * 0.20)));
         reviewBlocks.push({ lessonId: lesson.id, date: day2, blocks });
         totalReserved += blocks;
       }
     }
 
-    reservedByLesson[lesson.id] = totalReserved;
+    if (totalReserved > 0) {
+      reservedByLesson[lesson.id] = totalReserved;
+    }
   }
 
   return { reviewBlocks, reservedByLesson };
