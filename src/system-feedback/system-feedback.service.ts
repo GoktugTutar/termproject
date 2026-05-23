@@ -329,6 +329,35 @@ export class SystemFeedbackService {
       } else { console.log(`[SF] ⏭ kombine_yogun_erteleme (cooldown)`); }
     }
 
+    // ── Uyku & stres tetikleyicisi ────────────────────────────────────────
+    const recentSleep = await this.prisma.dailyChecklist.findMany({
+      where: {
+        userId,
+        date: { gte: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000) },
+        sleptWell: { not: null },
+      },
+      orderBy: { date: 'desc' },
+      select: { date: true, sleptWell: true, stressLevel: true },
+    });
+
+    if (recentSleep.length >= 2) {
+      const badSleepDays = recentSleep.filter((l) => l.sleptWell === false);
+      const avgStress = profile?.avgStress7d ?? 3;
+
+      if (badSleepDays.length >= 2 && avgStress >= 3.5) {
+        if (!await this.isOnCooldown(userId, 'dusuk_uyku_stres')) {
+          console.log(`[SF] ✓ dusuk_uyku_stres (badSleep=${badSleepDays.length}/3 stress=${avgStress.toFixed(1)})`);
+          messages.push({
+            type: 'dusuk_uyku_stres',
+            message: 'Son günlerde uyku düzenin bozulmuş görünüyor ve stres seviyen de yüksek.',
+            suggestion: 'Çalışma verimini korumak için önce uyku düzenini stabilize etmeye çalış.',
+          });
+          await this.logFeedback(userId, 'dusuk_uyku_stres');
+        } else { console.log(`[SF] ⏭ dusuk_uyku_stres (cooldown)`); }
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     console.log(`[SF] SONUC: ${messages.length} mesaj → [${messages.map(m => m.type).join(', ')}]`);
 
     const aiMessage = await this.buildAiMessage(messages, profile, lastFeedback?.weekloadFeedback ?? null);
@@ -401,7 +430,7 @@ export class SystemFeedbackService {
 
   private async buildAiMessage(
     messages: Array<{ type: string; message: string; suggestion: string }>,
-    profile: { completionRate7d: number; avgStress7d: number; avgFatigue7d: number; consistencyScore: number } | null,
+    profile: { completionRate7d: number; avgStress7d: number; consistencyScore: number } | null,
     lastWeekloadFeedback?: string | null,
   ): Promise<string> {
     if (messages.length === 0) return '';

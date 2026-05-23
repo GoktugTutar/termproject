@@ -12,7 +12,6 @@ export interface SystemFeedbackContext {
   studentProfile: {
     completionRate7d: number;
     avgStress7d: number;
-    avgFatigue7d: number;
     consistencyScore: number;
   } | null;
 
@@ -54,7 +53,6 @@ export function buildSystemFeedbackPrompt(context: SystemFeedbackContext): strin
     lines.push('Öğrencinin son 7 günlük genel durumu:');
     lines.push(`- Tamamlama oranı: %${Math.round(p.completionRate7d * 100)} (planlanan blokların ne kadarı tamamlandı)`);
     lines.push(`- Ortalama stres: ${p.avgStress7d.toFixed(1)} / 5`);
-    lines.push(`- Ortalama yorgunluk: ${p.avgFatigue7d.toFixed(1)} / 5`);
     lines.push(`- Çalışma istikrarı: %${Math.round(p.consistencyScore * 100)} (her gün az da olsa çalışıyor mu — düzenlilik ölçüsü)`);
     lines.push('');
   }
@@ -89,6 +87,7 @@ export function buildSystemFeedbackPrompt(context: SystemFeedbackContext): strin
     'Mesaj kısa olsun (2-4 cümle), motive edici veya uyarıcı bir tonda yazılsın, ' +
     'asla yargılayıcı veya eleştirici olmasın. ' +
     'Tespitlerde birden fazla ders varsa hepsini tek mesajda birleştir. ' +
+    'Öneriler gelecekte yapılabilecekleri anlatır — geçmişte yapıldığını ima etme. ' +
     'Sadece mesaj metnini yaz — başlık, madde işareti veya açıklama ekleme.',
   );
 
