@@ -140,10 +140,6 @@ export class UserService {
       recent7.length > 0
         ? recent7.reduce((s, c) => s + c.stressLevel, 0) / recent7.length
         : 3;
-    const avgFatigue7d =
-      recent7.length > 0
-        ? recent7.reduce((s, c) => s + c.fatigueLevel, 0) / recent7.length
-        : 3;
 
     // ── 3. Per-day-of-week completion rates (Mon=0..Sun=6) ───────────────────
     const dowPlanned = [0, 0, 0, 0, 0, 0, 0];
@@ -210,7 +206,6 @@ export class UserService {
         userId,
         completionRate7d,
         avgStress7d,
-        avgFatigue7d,
         dowCompletionRates: JSON.stringify(dowCompletionRates),
         sweetSpotBlocks,
         stressNearExam,
@@ -220,7 +215,6 @@ export class UserService {
       update: {
         completionRate7d,
         avgStress7d,
-        avgFatigue7d,
         dowCompletionRates: JSON.stringify(dowCompletionRates),
         sweetSpotBlocks,
         stressNearExam,

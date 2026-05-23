@@ -21,23 +21,20 @@ type CreateWeeklyPlanOptions = {
 export class PlannerService {
   constructor(private prisma: PrismaService) {}
 
-  // Haftanın başlangıcını (Pazartesi) hesapla
   private getWeekStart(date: Date): Date {
     const d = new Date(date);
-    const day = d.getDay(); // 0=Paz, 1=Pzt
+    const day = d.getDay();
     const diff = day === 0 ? -6 : 1 - day;
     d.setDate(d.getDate() + diff);
     d.setHours(0, 0, 0, 0);
     return d;
   }
 
-  // "HH:MM" string'ini gün içi dakikaya çevir
   private timeToMin(t: string): number {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + m;
   }
 
-  // Dakikayı "HH:MM" string'ine çevir
   private minToTime(min: number): string {
     const h = Math.floor(min / 60) % 24;
     const m = min % 60;
@@ -72,19 +69,13 @@ export class PlannerService {
     return this.toLocalDateStr(slot.date) === this.toLocalDateStr(date);
   }
 
-  // Çakışan busy slotları birleştir (merge)
   private mergeBusySlots(
     slots: Array<{ startTime: string; endTime: string }>,
   ): Array<{ start: number; end: number }> {
     if (slots.length === 0) return [];
-
     const intervals = slots
-      .map((s) => ({
-        start: this.timeToMin(s.startTime),
-        end: this.timeToMin(s.endTime),
-      }))
+      .map((s) => ({ start: this.timeToMin(s.startTime), end: this.timeToMin(s.endTime) }))
       .sort((a, b) => a.start - b.start);
-
     const merged = [{ ...intervals[0] }];
     for (let i = 1; i < intervals.length; i++) {
       const last = merged[merged.length - 1];
@@ -97,30 +88,21 @@ export class PlannerService {
     return merged;
   }
 
-  // Bir gün için 08:00-24:00 arasındaki boş zaman dilimlerini hesapla
   private getFreeWindows(
     mergedBusy: Array<{ start: number; end: number }>,
   ): Array<{ start: number; end: number }> {
-    const dayStart = 8 * 60; // 08:00
-    const dayEnd = 24 * 60; // 24:00 (gece yarısı)
+    const dayStart = 8 * 60;
+    const dayEnd = 24 * 60;
     const free: Array<{ start: number; end: number }> = [];
     let current = dayStart;
-
     for (const busy of mergedBusy) {
-      if (busy.start > current) {
-        free.push({ start: current, end: Math.min(busy.start, dayEnd) });
-      }
+      if (busy.start > current) free.push({ start: current, end: Math.min(busy.start, dayEnd) });
       current = Math.max(current, busy.end);
     }
-
-    if (current < dayEnd) {
-      free.push({ start: current, end: dayEnd });
-    }
-
+    if (current < dayEnd) free.push({ start: current, end: dayEnd });
     return free;
   }
 
-  // Haftalık plan oluştur: tüm algoritma adımlarını çalıştır ve veritabanına kaydet
   async createWeeklyPlan(
     userId: number,
     forDate?: Date,
@@ -133,7 +115,6 @@ export class PlannerService {
     weekEnd.setDate(weekEnd.getDate() + 6);
     weekEnd.setHours(23, 59, 59, 999);
 
-    // Kullanıcı verilerini al (busy slotlar, dersler, geri bildirimler, checklistler)
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -144,9 +125,7 @@ export class PlannerService {
         },
         weeklyFeedbacks: { orderBy: { weekStart: 'desc' }, take: 1 },
         checklists: {
-          where: {
-            date: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
-          },
+          where: { date: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
           include: { items: true },
         },
       },
@@ -154,80 +133,38 @@ export class PlannerService {
 
     if (!user) throw new Error('Kullanıcı bulunamadı');
 
-    const partialStart = options.fromDate
-      ? this.startOfLocalDay(options.fromDate)
-      : null;
+    const partialStart = options.fromDate ? this.startOfLocalDay(options.fromDate) : null;
 
-    // Son 7 günün tamamlanma oranını hesapla (ADIM 0 için)
     const recentChecklists = user.checklists;
-    const totalPlanned = recentChecklists.reduce(
-      (sum, c) => sum + c.items.reduce((s, i) => s + i.plannedBlocks, 0),
-      0,
-    );
-    const totalCompleted = recentChecklists.reduce(
-      (sum, c) => sum + c.items.reduce((s, i) => s + i.completedBlocks, 0),
-      0,
-    );
+    const totalPlanned = recentChecklists.reduce((sum, c) => sum + c.items.reduce((s, i) => s + i.plannedBlocks, 0), 0);
+    const totalCompleted = recentChecklists.reduce((sum, c) => sum + c.items.reduce((s, i) => s + i.completedBlocks, 0), 0);
 
     const lastFeedback = user.weeklyFeedbacks[0] ?? null;
 
-    // ADIM 0: Tükenmişlik sinyali → max blok miktarını güncelle
-    const defaultMaxBlocks =
-      user.studyStyle === 'deep_focus'
-        ? 4
-        : user.studyStyle === 'distributed'
-          ? 2
-          : 3;
-    const { maxBlocksPerSession } = step0Burnout(
-      totalCompleted,
-      totalPlanned,
-      defaultMaxBlocks,
-    );
-
-    // ADIM 1: Haftalık geri bildirim çarpanı
+    const defaultMaxBlocks = user.studyStyle === 'deep_focus' ? 4 : user.studyStyle === 'distributed' ? 2 : 3;
+    const { maxBlocksPerSession } = step0Burnout(totalCompleted, totalPlanned, defaultMaxBlocks);
     const multiplier = step1Multiplier(lastFeedback?.weekloadFeedback ?? null);
-
-    // ADIM 2: Efektif blok havuzu
     const effectiveBlocks = step2Pool(multiplier);
 
-    // ── LOG: Planner inputs ─────────────────────────────────────────────────
-    console.log(
-      `[PLANNER] createWeeklyPlan userId=${userId} weekStart=${weekStart.toISOString().substring(0, 10)}`,
-    );
-    console.log(
-      `  studyStyle=${user.studyStyle} defaultMaxBlocks=${defaultMaxBlocks} maxBlocksPerSession=${maxBlocksPerSession}`,
-    );
-    console.log(
-      `  completionRate: ${totalCompleted}/${totalPlanned} blocks completed in last 7 days`,
-    );
-    console.log(
-      `  lastFeedback weekload=${lastFeedback?.weekloadFeedback ?? 'none'} → multiplier=${multiplier}`,
-    );
-    console.log(`  effectiveBlocks=${effectiveBlocks}`);
-    console.log(
-      `  lessons: ${user.lessons.map((l) => `[${l.id}] ${l.name} diff=${l.difficulty} needsMoreTime=${l.needsMoreTime} keyfiDelay=${l.keyfiDelayCount} zorunluDelay=${l.zorunluDelayCount}`).join(', ')}`,
-    );
-    // ────────────────────────────────────────────────────────────────────────
+    console.log(`[P] plan userId=${userId} weekStart=${weekStart.toISOString().substring(0, 10)}`);
+    console.log(`[P] completion=${totalCompleted}/${totalPlanned} feedback=${lastFeedback?.weekloadFeedback ?? 'yok'} multiplier=${multiplier} effectiveBlocks=${effectiveBlocks} maxBlocks=${maxBlocksPerSession}`);
+    console.log(`[P] dersler: ${user.lessons.map(l => `${l.name}(diff=${l.difficulty},nmt=${l.needsMoreTime},delay=${l.keyfiDelayCount})`).join(' | ')}`);
 
-    // Hafta günlerini (Pazartesi-Pazar) oluştur
     const weekDays = Array.from({ length: 7 }, (_, i) => {
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
-      const dayOfWeek = i + 1; // 1=Pzt, 7=Paz
-      const dayBusySlots = user.busySlots.filter((s) =>
-        this.busySlotAppliesToDate(s, date, dayOfWeek),
-      );
+      const dayOfWeek = i + 1;
+      const dayBusySlots = user.busySlots.filter((s) => this.busySlotAppliesToDate(s, date, dayOfWeek));
       return { date, dayOfWeek, busySlots: dayBusySlots };
     });
     const planningDays = partialStart
       ? weekDays.filter((day) => day.date.getTime() >= partialStart.getTime())
       : weekDays;
 
-    // Hafta öncesi Cmt/Paz için review penceresi: weekStart − 2 gün
+    // Hafta öncesi Cmt/Paz için review penceresi: weekStart − 2 gün (arkadaşın fix'i)
     const reviewWindowStart = new Date(weekStart);
     reviewWindowStart.setDate(reviewWindowStart.getDate() - 2);
 
-    // ADIM 3: Sınav tekrar bloklarını ayır
     const { reviewBlocks, reservedByLesson } = step3ReviewBlocks(
       user.lessons,
       effectiveBlocks,
@@ -236,11 +173,9 @@ export class PlannerService {
       reviewWindowStart,
     );
 
-    // ADIM 4: Her ders için blok tahsisi hesapla (override varsa step4 atlanır)
     const lessonAllocations: Record<number, number> = {};
     if (overrideAllocations) {
       Object.assign(lessonAllocations, overrideAllocations);
-      console.log(`[PLANNER] Using override allocations:`, overrideAllocations);
     } else {
       const allocations = step4CalculateX(user.lessons, effectiveBlocks);
       for (const alloc of allocations) {
@@ -248,23 +183,28 @@ export class PlannerService {
       }
     }
 
-    // ADIM 5: Blokları günlere dağıt ve session limitlerini belirle
-    const dayConfigs = step5DayDistribution(
-      planningDays,
-      user.studyStyle,
-      maxBlocksPerSession,
-      user.lessons.length,
-    );
+    const dayConfigs = step5DayDistribution(planningDays, user.studyStyle, maxBlocksPerSession, user.lessons.length);
 
-    // ADIM 6: Dersleri öncelik sırasına göre sırala
-    const priorities = step6Priority(user.lessons, now);
+    // LessonPlanOverride'dan override'ları oku
+    const overrides = await this.prisma.lessonPlanOverride.findMany({
+      where: { userId, weekStart },
+    });
+    const priorityBoosts: Record<number, number> = {};
+    const reviewBlockLessonIds = new Set<number>();
+    for (const o of overrides) {
+      if (o.lessonId && o.priorityBoost) {
+        priorityBoosts[o.lessonId] = o.priorityBoost;
+        console.log(`[P] override: lessonId=${o.lessonId} priorityBoost=+${o.priorityBoost}`);
+      }
+      if (o.lessonId && o.addReviewBlock) {
+        reviewBlockLessonIds.add(o.lessonId);
+        console.log(`[P] override: lessonId=${o.lessonId} addReviewBlock=true`);
+      }
+    }
 
-    // ADIM 7: Bilişsel yük dengesini uygula
+    const priorities = step6Priority(user.lessons, now, priorityBoosts);
     const lessonMap = new Map(user.lessons.map((l) => [l.id, l]));
-    // slottedMode bilgisini ayrı bir map'te tut (step7CognitiveLoad bu alanı döndürmez)
-    const slottedModeMap = new Map(
-      priorities.map((p) => [p.lessonId, p.slottedMode]),
-    );
+    const slottedModeMap = new Map(priorities.map((p) => [p.lessonId, p.slottedMode]));
     const orderedWithDifficulty = priorities.map((p) => ({
       lessonId: p.lessonId,
       difficulty: lessonMap.get(p.lessonId)?.difficulty ?? 3,
@@ -272,25 +212,14 @@ export class PlannerService {
     }));
     const cognitiveOrdered = step7CognitiveLoad(orderedWithDifficulty);
 
-    // Her gün için boş zaman pencerelerini oluştur
-    const freeWindows: Record<
-      string,
-      Array<{ start: number; end: number }>
-    > = {};
+    const freeWindows: Record<string, Array<{ start: number; end: number }>> = {};
     for (const day of planningDays) {
       const dateStr = this.toLocalDateStr(day.date);
-      const mergedBusy = this.mergeBusySlots(
-        day.busySlots.map((s) => ({
-          startTime: s.startTime,
-          endTime: s.endTime,
-        })),
-      );
+      const mergedBusy = this.mergeBusySlots(day.busySlots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })));
       freeWindows[dateStr] = this.getFreeWindows(mergedBusy);
     }
 
-    // Hafta öncesi Cmt/Paz günlerini sadece review yerleştirme için freeWindows'a ekle.
-    // dayConfigs'e girmezler → ADIM 8 normal ders bloğu koymaz.
-    // Geçmiş günler atlanır; partial modda zaten planningDays içindeyse tekrar eklenmez.
+    // Hafta öncesi Cmt/Paz günlerini sadece review yerleştirme için freeWindows'a ekle (arkadaşın fix'i)
     const todayStart = this.startOfLocalDay(now);
     for (let offset = -2; offset < 0; offset++) {
       const preDate = new Date(weekStart);
@@ -309,7 +238,21 @@ export class PlannerService {
       );
     }
 
-    // ADIM 7.5: Tekrar bloklarını önce yerleştir
+    // addReviewBlock override'ı olan dersler için ekstra review bloğu ekle
+    for (const lessonId of reviewBlockLessonIds) {
+      for (const day of planningDays) {
+        if (day.date < todayStart) continue;
+        const dateStr = this.toLocalDateStr(day.date);
+        const windows = freeWindows[dateStr] ?? [];
+        const firstWindow = windows.find(w => w.end - w.start >= 30);
+        if (firstWindow) {
+          reviewBlocks.push({ lessonId, date: day.date, blocks: 1 });
+          console.log(`[P] review blogu eklendi: lessonId=${lessonId} date=${dateStr}`);
+          break;
+        }
+      }
+    }
+
     const {
       placed: reviewPlaced,
       updatedAllocations,
@@ -342,21 +285,12 @@ export class PlannerService {
       user.preferredStudyTime,
     );
 
-    // ── LOG: Placement results ─────────────────────────────────────────────
-    console.log(
-      `[PLANNER] placement results: ${lessonPlaced.length} lesson blocks + ${reviewPlaced.length} review blocks placed`,
-    );
-    console.log(
-      `  programScore=${programScore.toFixed(3)} programLevel=${programLevel} forcedBlocks=${forcedBlocks}`,
-    );
+    console.log(`[P] sonuc: ${lessonPlaced.length} ders blogu + ${reviewPlaced.length} tekrar blogu | score=${programScore.toFixed(2)} level=${programLevel} forced=${forcedBlocks}`);
     if (unplacedLessonIds.length > 0) {
-      console.warn(
-        `[PLANNER] WARNING: ${unplacedLessonIds.length} lesson(s) could not be placed: lessonIds=${unplacedLessonIds.join(', ')}`,
-      );
+      const names = unplacedLessonIds.map(id => lessonMap.get(id)?.name ?? id).join(', ');
+      console.warn(`[P] SIGMIYOR: ${names}`);
     }
-    // ────────────────────────────────────────────────────────────────────────
 
-    // Tam plan eski haftayı değiştirir; recalculate sadece başlangıç ve sonrasını yeniler.
     await this.prisma.scheduledBlock.deleteMany({
       where: partialStart
         ? { userId, weekStart, date: { gte: partialStart } }
@@ -372,9 +306,7 @@ export class PlannerService {
           date: block.date,
           startTime: this.minToTime(block.startMin),
           endTime: this.minToTime(block.endMin),
-          blockCount:
-            block.blockCount ??
-            Math.round((block.endMin - block.startMin) / 30),
+          blockCount: block.blockCount ?? Math.round((block.endMin - block.startMin) / 30),
           isReview: block.isReview,
           weekStart,
         },
@@ -385,77 +317,47 @@ export class PlannerService {
     return { ...weekBlocks, programScore, programLevel, forcedBlocks, unplacedLessonIds, quality };
   }
 
-  // Haftanın planlanan bloklarını getir
   async getWeekBlocks(userId: number, forDate?: Date) {
     const now = forDate ?? getCurrentTime();
     const weekStart = this.getWeekStart(now);
-
     const blocks = await this.prisma.scheduledBlock.findMany({
       where: { userId, weekStart },
       include: { lesson: true },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
     });
-
     return { weekStart, blocks };
   }
 
-  // BusySlot değişikliğinde kalan günleri yeniden hesapla (ADIM 9)
   async recalculate(userId: number, fromDate?: string) {
     const now = getCurrentTime();
     const weekStart = this.getWeekStart(now);
     const todayStart = this.startOfLocalDay(now);
-    const requestedStart = fromDate
-      ? this.parseLocalDate(fromDate)
-      : todayStart;
-    const recalcStart =
-      requestedStart.getTime() > todayStart.getTime()
-        ? requestedStart
-        : todayStart;
+    const requestedStart = fromDate ? this.parseLocalDate(fromDate) : todayStart;
+    const recalcStart = requestedStart.getTime() > todayStart.getTime() ? requestedStart : todayStart;
 
-    // Recalculate başlangıcı ve sonrası için planlanmış blokları ders bazında topla
     const futureBlocks = await this.prisma.scheduledBlock.findMany({
       where: { userId, weekStart, date: { gte: recalcStart } },
     });
 
     const allocatedByLesson: Record<number, number> = {};
     for (const block of futureBlocks) {
-      allocatedByLesson[block.lessonId] =
-        (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
+      allocatedByLesson[block.lessonId] = (allocatedByLesson[block.lessonId] ?? 0) + block.blockCount;
     }
 
-    // Aynı hafta içinde recalculate başlangıcından önce tamamlanan blokları ders bazında topla
     const completedItems = await this.prisma.checklistItem.findMany({
-      where: {
-        checklist: { userId, date: { gte: weekStart, lt: recalcStart } },
-      },
+      where: { checklist: { userId, date: { gte: weekStart, lt: recalcStart } } },
     });
 
     const completedByLesson: Record<number, number> = {};
     for (const item of completedItems) {
-      completedByLesson[item.lessonId] =
-        (completedByLesson[item.lessonId] ?? 0) + item.completedBlocks;
+      completedByLesson[item.lessonId] = (completedByLesson[item.lessonId] ?? 0) + item.completedBlocks;
     }
 
-    // ADIM 9: Kalan blokları hesapla (sadece recalculate başlangıcı ve sonrası)
-    const remainingAllocations = step9Recalculate(
-      allocatedByLesson,
-      completedByLesson,
-    );
+    const remainingAllocations = step9Recalculate(allocatedByLesson, completedByLesson);
 
-    console.log(
-      `[PLANNER] recalculate userId=${userId} futureAllocated:`,
-      allocatedByLesson,
-      'completedBeforeRecalcStart:',
-      completedByLesson,
-      'recalcStart:',
-      this.toLocalDateStr(recalcStart),
-      'remaining:',
-      remainingAllocations,
-    );
+    console.log(`[P] recalculate userId=${userId} from=${this.toLocalDateStr(recalcStart)}`);
+    console.log(`[P] allocated:`, allocatedByLesson, '| completed:', completedByLesson, '| remaining:', remainingAllocations);
 
-    // Kalan blokları override olarak geçirerek yeni planı oluştur.
-    return this.createWeeklyPlan(userId, now, remainingAllocations, {
-      fromDate: recalcStart,
-    });
+    return this.createWeeklyPlan(userId, now, remainingAllocations, { fromDate: recalcStart });
   }
 }

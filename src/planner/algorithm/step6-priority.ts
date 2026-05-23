@@ -8,7 +8,6 @@ export interface LessonPriority {
   slottedMode: boolean;
 }
 
-// Sınava kalan güne göre öncelik seviyesi belirle
 function uToPriority(u: number): PriorityLevel {
   if (u <= 3) return 'KRITIK';
   if (u <= 7) return 'YUKSEK';
@@ -16,7 +15,6 @@ function uToPriority(u: number): PriorityLevel {
   return 'DUSUK';
 }
 
-// Öncelik seviyesini sayısal puana çevir
 function priorityScore(level: PriorityLevel): number {
   switch (level) {
     case 'KRITIK': return 4;
@@ -26,7 +24,6 @@ function priorityScore(level: PriorityLevel): number {
   }
 }
 
-// Derse ait en yakın sınava kalan gün sayısını hesapla
 function daysUntilExam(lesson: { exams: Array<{ examDate: Date }> }, now: Date): number {
   const exams = lesson.exams || [];
   if (exams.length === 0) return 999;
@@ -36,7 +33,6 @@ function daysUntilExam(lesson: { exams: Array<{ examDate: Date }> }, now: Date):
   return future.length > 0 ? Math.min(...future) : 999;
 }
 
-// Tüm dersleri öncelik skoruna göre sırala
 export function step6Priority(
   lessons: Array<{
     id: number;
@@ -46,6 +42,8 @@ export function step6Priority(
     exams: Array<{ examDate: Date }>;
   }>,
   now: Date,
+  // LessonPlanOverride'dan gelen boost map: lessonId → priorityBoost
+  priorityBoosts: Record<number, number> = {},
 ): LessonPriority[] {
   return lessons
     .map((lesson) => {
@@ -54,21 +52,22 @@ export function step6Priority(
 
       let level = uToPriority(u);
 
-      // 3+ delay → bir kademe yukarı (KRITIK üzerinde çıkamaz)
+      // 3+ delay → bir kademe yukarı
       if (totalDelay >= 3) {
         const levels: PriorityLevel[] = ['DUSUK', 'ORTA', 'YUKSEK', 'KRITIK'];
         const idx = levels.indexOf(level);
         if (idx < levels.length - 1) level = levels[idx + 1];
       }
 
-      // keyfiDelay > 0 → slotlu mod (aynı ders 3 gün üst üste yerleştirilemez)
       const slottedMode = lesson.keyfiDelayCount > 0;
+
+      // LessonPlanOverride'dan gelen priority boost — ham skora eklenir
+      const boost = priorityBoosts[lesson.id] ?? 0;
 
       return {
         lessonId: lesson.id,
         priority: level,
-        // Önce öncelik seviyesi, sonra zorluk derecesi
-        priorityScore: priorityScore(level) * 10 + lesson.difficulty,
+        priorityScore: priorityScore(level) * 10 + lesson.difficulty + boost,
         slottedMode,
       };
     })

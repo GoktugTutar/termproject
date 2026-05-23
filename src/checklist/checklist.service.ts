@@ -97,7 +97,6 @@ export class ChecklistService {
           userId,
           date: today,
           stressLevel: dto.stressLevel,
-          fatigueLevel: dto.fatigueLevel,
         },
         include: { items: true },
       });
@@ -105,7 +104,7 @@ export class ChecklistService {
       // Mevcut checklist'i güncelle
       await this.prisma.dailyChecklist.update({
         where: { id: checklist.id },
-        data: { stressLevel: dto.stressLevel, fatigueLevel: dto.fatigueLevel },
+        data: { stressLevel: dto.stressLevel },
       });
     }
 

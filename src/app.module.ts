@@ -9,6 +9,7 @@ import { ChecklistModule } from './checklist/checklist.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { SystemFeedbackModule } from './system-feedback/system-feedback.module';
 import { DebugController } from './debug/debug.controller';
+import { AiCoachModule } from './ai-coach/ai-coach.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { DebugController } from './debug/debug.controller';
     PlannerModule,
     ChecklistModule,
     FeedbackModule,
+    AiCoachModule,
     SystemFeedbackModule,
   ],
   controllers: [DebugController],

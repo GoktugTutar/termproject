@@ -22,12 +22,12 @@ enum StudyStyle {
 }
 
 model User {
-  id                 Int              @id @default(autoincrement())
-  email              String           @unique
+  id                 Int                  @id @default(autoincrement())
+  email              String               @unique
   passwordHash       String
-  firstWeekStartedAt DateTime?        @default(now())
-  preferredStudyTime StudyTime        @default(morning)
-  studyStyle         StudyStyle       @default(normal)
+  firstWeekStartedAt DateTime?            @default(now())
+  preferredStudyTime StudyTime            @default(morning)
+  studyStyle         StudyStyle           @default(normal)
   busySlots          UserBusySlot[]
   lessons            Lesson[]
   terms              Term[]
@@ -35,6 +35,8 @@ model User {
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
   profile            StudentProfile?
+  feedbackLogs       SystemFeedbackLog[]
+  planOverrides      LessonPlanOverride[]
 }
 
 model StudentProfile {
@@ -46,7 +48,6 @@ model StudentProfile {
   // Rolling 7-day metrics
   completionRate7d   Float    @default(0)
   avgStress7d        Float    @default(3)
-  avgFatigue7d       Float    @default(3)
 
   // Per-day-of-week completion rates (Mon=0..Sun=6), stored as JSON string
   dowCompletionRates String   @default("[0,0,0,0,0,0,0]")
@@ -142,7 +143,7 @@ model DailyChecklist {
   user         User            @relation(fields: [userId], references: [id])
   date         DateTime
   stressLevel  Int             @default(3)
-  fatigueLevel Int             @default(3)
+  sleptWell   Boolean?
   items        ChecklistItem[]
 }
 
@@ -172,3 +173,33 @@ model LessonFeedback {
   lessonId         Int
   needsMoreTime    Int
 }
+
+model SystemFeedbackLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  type        String
+  lessonId    Int?
+  triggeredAt DateTime @default(now())
+
+  @@index([userId, type, lessonId])
+}
+
+model LessonPlanOverride {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  user               User     @relation(fields: [userId], references: [id])
+  lessonId           Int?
+  weekStart          DateTime
+  priorityBoost      Int      @default(0)
+  preferEarlySlot    Boolean  @default(false)
+  maxSessionBlocks   Int?
+  multiplierOverride Float?
+  addReviewBlock     Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  @@unique([userId, lessonId, weekStart])
+  @@index([userId, weekStart])
+}
+
+

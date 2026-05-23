@@ -37,11 +37,6 @@ export class SubmitChecklistDto {
   @Max(5)
   stressLevel: number;
 
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  fatigueLevel: number;
-
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ChecklistItemDto)
