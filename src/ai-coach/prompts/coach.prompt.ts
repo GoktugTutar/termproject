@@ -20,6 +20,13 @@ export interface CoachPromptInput {
     lessonName: string;
     delayCount: number;
   }>;
+  // Uyku & performans ilişkisi
+  sleepMetrics?: {
+    goodSleepCompletionRate: number;
+    badSleepCompletionRate: number | null;
+    goodSleepAvgStress: number | null;
+    badSleepAvgStress: number | null;
+  } | null;
 }
 
 export function buildCoachPrompt(input: CoachPromptInput): string {
@@ -78,6 +85,28 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
       lines.push(`- ${d.lessonName}: ${d.delayCount} kez ertelendi`);
     }
     lines.push('');
+  }
+
+  // Uyku & performans ilişkisi
+  if (input.sleepMetrics) {
+    const s = input.sleepMetrics;
+    const compDiff = s.badSleepCompletionRate !== null
+      ? Math.round((s.goodSleepCompletionRate - (s.badSleepCompletionRate ?? 0)) * 100)
+      : null;
+    const stressDiff = (s.goodSleepAvgStress !== null && s.badSleepAvgStress !== null)
+      ? (s.badSleepAvgStress - s.goodSleepAvgStress).toFixed(1)
+      : null;
+
+    if (compDiff !== null || stressDiff !== null) {
+      lines.push('Uyku & performans ilişkisi (kişisel veri, son 14 gün):');
+      if (compDiff !== null) {
+        lines.push(`- İyi uyuduğu günlerde tamamlama oranı %${Math.round(s.goodSleepCompletionRate * 100)}, kötü uyuduğu günlerde %${Math.round((s.badSleepCompletionRate ?? 0) * 100)}`);
+      }
+      if (stressDiff !== null) {
+        lines.push(`- Kötü uyuduğu günlerde stres ${stressDiff} puan daha yüksek`);
+      }
+      lines.push('');
+    }
   }
 
   lines.push('Yukarıdaki verilere dayanarak öğrenciye bugün için kısa bir koçluk mesajı yaz.');

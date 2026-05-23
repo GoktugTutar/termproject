@@ -160,7 +160,7 @@ export class SystemFeedbackService {
           messages.push({
             type: 'sik_erteleme',
             message: `${lesson.name} sık erteleniyor — slotlu mod devreye alındı.`,
-            suggestion: 'Bu dersi en az her 3 günde bir planlaman önerilir.',
+            suggestion: 'Sistem bu dersi öncelikli sıraya aldı. Sen de çalışmaya başlarken en kısa oturumla bile olsa bir adım at.',
           });
           await this.logFeedback(userId, 'sik_erteleme', lesson.id);
         } else { console.log(`[SF] ⏭ sik_erteleme -> ${lesson.name} (cooldown)`); }
@@ -232,7 +232,7 @@ export class SystemFeedbackService {
         messages.push({
           type: 'sinav_yogunlugu_kritik',
           message: `Önümüzdeki haftada yoğun bir sınav dönemi var: ${examList}. Acil hazırlık modu gerekiyor.`,
-          suggestion: 'Bu haftaki planı sınav moduna geç, diğer dersleri minimize et.',
+          suggestion: 'Bu hafta sınav olan derslere odaklan, diğer dersleri kısalt — ama planı sistem zaten buna göre ayarladı.',
         });
         await this.logFeedback(userId, 'sinav_yogunlugu_kritik');
       } else { console.log(`[SF] ⏭ sinav_yogunlugu_kritik (cooldown)`); }
@@ -346,12 +346,31 @@ export class SystemFeedbackService {
 
       if (badSleepDays.length >= 2 && avgStress >= 3.5) {
         if (!await this.isOnCooldown(userId, 'dusuk_uyku_stres')) {
-          console.log(`[SF] ✓ dusuk_uyku_stres (badSleep=${badSleepDays.length}/3 stress=${avgStress.toFixed(1)})`);
-          messages.push({
-            type: 'dusuk_uyku_stres',
-            message: 'Son günlerde uyku düzenin bozulmuş görünüyor ve stres seviyen de yüksek.',
-            suggestion: 'Çalışma verimini korumak için önce uyku düzenini stabilize etmeye çalış.',
-          });
+          // Profildeki uyku metrikleriyle kişiselleştirilmiş mesaj üret
+          const goodComp = profile?.goodSleepCompletionRate;
+          const badComp = profile?.badSleepCompletionRate;
+          const goodStress = profile?.goodSleepAvgStress;
+          const badStress = profile?.badSleepAvgStress;
+
+          let message = 'Son günlerde uyku düzenin bozulmuş görünüyor ve stres seviyen de yüksek.';
+          let suggestion = 'Çalışma verimini korumak için önce uyku düzenini stabilize etmeye çalış.';
+
+          // Yeterli veri varsa kişiselleştirilmiş mesaj oluştur
+          if (goodComp !== null && goodComp !== undefined && badComp !== null && badComp !== undefined) {
+            const compDiff = Math.round((goodComp - badComp) * 100);
+            if (compDiff >= 15) {
+              message = `Kötü uyuduğun günlerde tamamlama oranın %${compDiff} düşüyor — uyku düzenin çalışma verimini doğrudan etkiliyor.`;
+            }
+          }
+          if (goodStress !== null && goodStress !== undefined && badStress !== null && badStress !== undefined) {
+            const stressDiff = (badStress - goodStress).toFixed(1);
+            if (parseFloat(stressDiff) >= 0.8) {
+              suggestion = `İyi uyuduğun günlerde stresin ${stressDiff} puan daha düşük. Uyku düzenini korumak bu hafta önceliğin olsun.`;
+            }
+          }
+
+          console.log(`[SF] ✓ dusuk_uyku_stres (badSleep=${badSleepDays.length}/3 stress=${avgStress.toFixed(1)} goodComp=${goodComp?.toFixed(2) ?? '-'} badComp=${badComp?.toFixed(2) ?? '-'})`);
+          messages.push({ type: 'dusuk_uyku_stres', message, suggestion });
           await this.logFeedback(userId, 'dusuk_uyku_stres');
         } else { console.log(`[SF] ⏭ dusuk_uyku_stres (cooldown)`); }
       }

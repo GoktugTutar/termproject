@@ -78,6 +78,15 @@ export class AiCoachService {
       }
     }
 
+    const sleepMetrics = (profile?.goodSleepCompletionRate !== null && profile?.goodSleepCompletionRate !== undefined)
+      ? {
+          goodSleepCompletionRate: profile.goodSleepCompletionRate,
+          badSleepCompletionRate: profile.badSleepCompletionRate ?? null,
+          goodSleepAvgStress: profile.goodSleepAvgStress ?? null,
+          badSleepAvgStress: profile.badSleepAvgStress ?? null,
+        }
+      : null;
+
     const prompt = buildWhatIfPrompt({
       scenario,
       profile,
@@ -87,6 +96,7 @@ export class AiCoachService {
       focusLessonKeyfiDelayCount,
       emptyDayName,
       emptyDayBlockCount,
+      sleepMetrics,
     });
 
     console.log(`[AC] prompt hazır: ${prompt.split('\n').length} satır, upcomingExams=${upcomingExams.length}`);
@@ -149,12 +159,22 @@ export class AiCoachService {
 
     console.log(`[AC] upcomingExams=${upcomingExams.length} delayedLessons=${delayedLessons.length} thisWeekBlocks=${blockMap.size}`);
 
+    const sleepMetrics = (profile?.goodSleepCompletionRate !== null && profile?.goodSleepCompletionRate !== undefined)
+      ? {
+          goodSleepCompletionRate: profile.goodSleepCompletionRate,
+          badSleepCompletionRate: profile.badSleepCompletionRate ?? null,
+          goodSleepAvgStress: profile.goodSleepAvgStress ?? null,
+          badSleepAvgStress: profile.badSleepAvgStress ?? null,
+        }
+      : null;
+
     const prompt = buildCoachPrompt({
       profile,
       upcomingExams,
       weeklyFeedback: (lastFeedback?.weekloadFeedback as any) ?? null,
       thisWeekBlocks: [...blockMap.values()],
       delayedLessons,
+      sleepMetrics,
     });
 
     const message = await this.callAi(prompt, 'dailyCoach');

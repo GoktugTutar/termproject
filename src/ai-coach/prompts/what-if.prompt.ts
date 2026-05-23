@@ -24,6 +24,13 @@ export interface WhatIfInput {
   // 'gun_bos' için
   emptyDayName?: string; // örn. "Cuma"
   emptyDayBlockCount?: number;
+  // Uyku & performans ilişkisi (profilde yeterli veri varsa)
+  sleepMetrics?: {
+    goodSleepCompletionRate: number;
+    badSleepCompletionRate: number | null;
+    goodSleepAvgStress: number | null;
+    badSleepAvgStress: number | null;
+  } | null;
 }
 
 const SCENARIO_LABELS: Record<WhatIfScenario, string> = {
@@ -36,11 +43,7 @@ const SCENARIO_LABELS: Record<WhatIfScenario, string> = {
 
 export function buildWhatIfPrompt(input: WhatIfInput): string {
   const lines: string[] = [];
-  
-  lines.push('Önemli: Öğrencinin bir otomatik planlama sistemi var. ' +
-  'Blok sayısı, ders sırası gibi plan kararlarını verme. ' +
-  'Sadece senaryonun olası etkisini ve öğrencinin tutumuna dair ' +
-  'bir öneri sun.');
+
   lines.push('Sen bir öğrenci çalışma takip sisteminde eğitim koçusun.');
   lines.push('Öğrencinin seçtiği senaryoyu veriye dayalı ama koç gibi — destekleyici, yargısız — açıklayacaksın.');
   lines.push('Planı değiştirme, sadece olası etkiyi ve uygulanabilir bir öneriyi açıkla.');
@@ -58,6 +61,28 @@ export function buildWhatIfPrompt(input: WhatIfInput): string {
     lines.push(`- Ortalama stres: ${p.avgStress7d.toFixed(1)} / 5`);
     lines.push(`- Çalışma istikrarı: %${Math.round(p.consistencyScore * 100)}`);
     lines.push('');
+  }
+
+  // Uyku & performans ilişkisi
+  if (input.sleepMetrics) {
+    const s = input.sleepMetrics;
+    const compDiff = s.badSleepCompletionRate !== null
+      ? Math.round((s.goodSleepCompletionRate - (s.badSleepCompletionRate ?? 0)) * 100)
+      : null;
+    const stressDiff = (s.goodSleepAvgStress !== null && s.badSleepAvgStress !== null)
+      ? (s.badSleepAvgStress - s.goodSleepAvgStress).toFixed(1)
+      : null;
+
+    if (compDiff !== null || stressDiff !== null) {
+      lines.push('Uyku & performans ilişkisi (son 14 gün):');
+      if (compDiff !== null) {
+        lines.push(`- İyi uyuduğu günlerde tamamlama oranı %${Math.round(s.goodSleepCompletionRate * 100)}, kötü uyuduğu günlerde %${Math.round((s.badSleepCompletionRate ?? 0) * 100)} (fark: %${compDiff})`);
+      }
+      if (stressDiff !== null) {
+        lines.push(`- İyi uyuduğu günlerde ortalama stres ${s.goodSleepAvgStress?.toFixed(1)}, kötü uyuduğu günlerde ${s.badSleepAvgStress?.toFixed(1)} (fark: ${stressDiff})`);
+      }
+      lines.push('');
+    }
   }
 
   // Yaklaşan sınavlar

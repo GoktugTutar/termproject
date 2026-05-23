@@ -25,7 +25,6 @@ export class UserService {
     return busySlots.map((slot) => {
       const isRoutine = slot.isRoutine ?? slot.date == null;
       const date = isRoutine ? null : this.parseBusySlotDate(slot.date);
-
       return {
         userId,
         dayOfWeek: slot.dayOfWeek,
@@ -41,35 +40,23 @@ export class UserService {
 
   private parseBusySlotDate(date?: string): Date {
     if (!date) {
-      throw new BadRequestException(
-        'Tek haftalık busy time için date zorunlu.',
-      );
+      throw new BadRequestException('Tek haftalık busy time için date zorunlu.');
     }
-
     const dayOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     const parsed = dayOnly
       ? new Date(Date.UTC(Number(dayOnly[1]), Number(dayOnly[2]) - 1, Number(dayOnly[3])))
       : new Date(date);
-
     if (Number.isNaN(parsed.getTime())) {
       throw new BadRequestException('Busy time tarihi geçersiz.');
     }
-
     parsed.setUTCHours(0, 0, 0, 0);
     return parsed;
   }
 
-  // Kullanıcı tercihlerini kaydet/güncelle
   async setup(userId: number, dto: SetupUserDto) {
     const { busySlots, ...rest } = dto;
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: rest,
-    });
-
+    await this.prisma.user.update({ where: { id: userId }, data: rest });
     if (busySlots !== undefined) {
-      // Mevcut busy slotları sil ve yenilerini ekle
       await this.prisma.userBusySlot.deleteMany({ where: { userId } });
       if (busySlots.length > 0) {
         await this.prisma.userBusySlot.createMany({
@@ -77,11 +64,9 @@ export class UserService {
         });
       }
     }
-
     return this.getProfile(userId);
   }
 
-  // BusySlot'ları tamamen güncelle (eski slotları sil, yenilerini ekle)
   async updateBusySlots(userId: number, busySlots: BusySlotDto[]) {
     await this.prisma.userBusySlot.deleteMany({ where: { userId } });
     if (busySlots.length > 0) {
@@ -92,7 +77,6 @@ export class UserService {
     return this.getProfile(userId);
   }
 
-  // Kullanıcı profili ve busy slotları getir
   async getProfile(userId: number) {
     return this.prisma.user.findUnique({
       where: { id: userId },
@@ -113,35 +97,31 @@ export class UserService {
       orderBy: { date: 'asc' },
     });
 
-    // Sınav tarihli dersleri al
     const lessons = await this.prisma.lesson.findMany({
       where: { userId },
       include: { exams: true },
     });
 
-    // ── 1. Rolling 7-day completion rate ──────────────────────────────────────
+    // ── 1. Rolling 7-day completion rate ─────────────────────────────────────
     const since7 = new Date(now);
     since7.setDate(since7.getDate() - 7);
     const recent7 = checklists.filter((c) => c.date >= since7);
 
-    let totalPlanned = 0,
-      totalCompleted = 0;
+    let totalPlanned = 0, totalCompleted = 0;
     for (const c of recent7) {
       for (const item of c.items) {
         totalPlanned += item.plannedBlocks;
         totalCompleted += item.completedBlocks;
       }
     }
-    const completionRate7d =
-      totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
+    const completionRate7d = totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
 
-    // ── 2. Rolling 7-day avg stress & fatigue ─────────────────────────────────
-    const avgStress7d =
-      recent7.length > 0
-        ? recent7.reduce((s, c) => s + c.stressLevel, 0) / recent7.length
-        : 3;
+    // ── 2. Rolling 7-day avg stress ───────────────────────────────────────────
+    const avgStress7d = recent7.length > 0
+      ? recent7.reduce((s, c) => s + c.stressLevel, 0) / recent7.length
+      : 3;
 
-    // ── 3. Per-day-of-week completion rates (Mon=0..Sun=6) ───────────────────
+    // ── 3. Per-day-of-week completion rates (Mon=0..Sun=6) ────────────────────
     const dowPlanned = [0, 0, 0, 0, 0, 0, 0];
     const dowCompleted = [0, 0, 0, 0, 0, 0, 0];
     for (const c of checklists) {
@@ -159,18 +139,14 @@ export class UserService {
     const fullSessions: number[] = [];
     for (const c of checklists) {
       for (const item of c.items) {
-        if (
-          item.plannedBlocks > 0 &&
-          item.completedBlocks >= item.plannedBlocks
-        ) {
+        if (item.plannedBlocks > 0 && item.completedBlocks >= item.plannedBlocks) {
           fullSessions.push(item.plannedBlocks);
         }
       }
     }
-    const sweetSpotBlocks =
-      fullSessions.length > 0
-        ? fullSessions.reduce((a, b) => a + b, 0) / fullSessions.length
-        : 2;
+    const sweetSpotBlocks = fullSessions.length > 0
+      ? fullSessions.reduce((a, b) => a + b, 0) / fullSessions.length
+      : 2;
 
     // ── 5. Avg stress near exam (<=7 days away) ───────────────────────────────
     const stressNearExamDays: number[] = [];
@@ -179,25 +155,49 @@ export class UserService {
       const nearExam = lessons.some((l) =>
         l.exams.some((e) => {
           const daysLeft = Math.ceil(
-            (new Date(e.examDate).getTime() - cDate.getTime()) /
-              (1000 * 60 * 60 * 24),
+            (new Date(e.examDate).getTime() - cDate.getTime()) / (1000 * 60 * 60 * 24),
           );
           return daysLeft >= 0 && daysLeft <= 7;
         }),
       );
       if (nearExam) stressNearExamDays.push(c.stressLevel);
     }
-    const stressNearExam =
-      stressNearExamDays.length > 0
-        ? stressNearExamDays.reduce((a, b) => a + b, 0) /
-          stressNearExamDays.length
-        : 3;
+    const stressNearExam = stressNearExamDays.length > 0
+      ? stressNearExamDays.reduce((a, b) => a + b, 0) / stressNearExamDays.length
+      : 3;
 
     // ── 6. Consistency score (last 14 days) ───────────────────────────────────
     const activeDays = checklists.filter((c) =>
       c.items.some((i) => i.completedBlocks > 0),
     ).length;
     const consistencyScore = activeDays / 14;
+
+    // ── 7. Uyku & completion ilişkisi (last 14 days, sleptWell dolu günler) ───
+    const calcSleepCompletion = (days: typeof checklists): number | null => {
+      const planned = days.reduce((s, c) => s + c.items.reduce((ss, i) => ss + i.plannedBlocks, 0), 0);
+      const completed = days.reduce((s, c) => s + c.items.reduce((ss, i) => ss + i.completedBlocks, 0), 0);
+      return planned > 0 ? completed / planned : null;
+    };
+
+    const goodSleepDays = checklists.filter((c) => c.sleptWell === true);
+    const badSleepDays = checklists.filter((c) => c.sleptWell === false);
+    const goodSleepCompletionRate = calcSleepCompletion(goodSleepDays);
+    const badSleepCompletionRate = calcSleepCompletion(badSleepDays);
+
+    const goodSleepAvgStress = goodSleepDays.length > 0
+      ? goodSleepDays.reduce((s, c) => s + c.stressLevel, 0) / goodSleepDays.length
+      : null;
+    const badSleepAvgStress = badSleepDays.length > 0
+      ? badSleepDays.reduce((s, c) => s + c.stressLevel, 0) / badSleepDays.length
+      : null;
+
+    if (goodSleepDays.length > 0 || badSleepDays.length > 0) {
+      console.log(
+        `[PROFILE] uyku etkisi: ` +
+        `iyi=%${goodSleepCompletionRate !== null ? Math.round(goodSleepCompletionRate * 100) : '-'} stres=${goodSleepAvgStress?.toFixed(1) ?? '-'} (${goodSleepDays.length}g) | ` +
+        `kotu=%${badSleepCompletionRate !== null ? Math.round(badSleepCompletionRate * 100) : '-'} stres=${badSleepAvgStress?.toFixed(1) ?? '-'} (${badSleepDays.length}g)`,
+      );
+    }
 
     // ── Upsert ────────────────────────────────────────────────────────────────
     await this.prisma.studentProfile.upsert({
@@ -210,6 +210,10 @@ export class UserService {
         sweetSpotBlocks,
         stressNearExam,
         consistencyScore,
+        goodSleepCompletionRate,
+        badSleepCompletionRate,
+        goodSleepAvgStress,
+        badSleepAvgStress,
         totalSubmissions: 1,
       },
       update: {
@@ -219,12 +223,15 @@ export class UserService {
         sweetSpotBlocks,
         stressNearExam,
         consistencyScore,
+        goodSleepCompletionRate,
+        badSleepCompletionRate,
+        goodSleepAvgStress,
+        badSleepAvgStress,
         totalSubmissions: { increment: 1 },
       },
     });
   }
 
-  // Aktif dönemi sonlandır
   async endTerm(userId: number): Promise<{ ok: boolean }> {
     await this.prisma.term.updateMany({
       where: { userId, isActive: true },
@@ -233,7 +240,6 @@ export class UserService {
     return { ok: true };
   }
 
-  // Aktif dönemi sonlandır ve yeni boş dönem başlat
   async startTerm(userId: number, name?: string): Promise<object> {
     await this.prisma.term.updateMany({
       where: { userId, isActive: true },
@@ -244,7 +250,6 @@ export class UserService {
     });
   }
 
-  // Dijital ikiz profilini getir (yoksa boş oluştur)
   async getStudentProfile(userId: number) {
     return this.prisma.studentProfile.upsert({
       where: { userId },

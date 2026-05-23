@@ -63,6 +63,11 @@ model StudentProfile {
 
   // Total submissions used to weight averages
   totalSubmissions   Int      @default(0)
+
+  goodSleepCompletionRate  Float?
+  badSleepCompletionRate   Float?
+  goodSleepAvgStress       Float?
+  badSleepAvgStress        Float?
 }
 
 
