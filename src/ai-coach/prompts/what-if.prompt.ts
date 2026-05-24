@@ -11,20 +11,22 @@ export interface WhatIfInput {
     completionRate7d: number;
     avgStress7d: number;
     consistencyScore: number;
+    stressNearExam: number;
+    hasUpcomingExam: boolean;
   } | null;
   upcomingExams: Array<{
     lessonName: string;
     daysLeft: number;
     difficulty: number;
   }>;
-  // 'ders_durumu' ve 'derse_odaklan' için
+  // For 'ders_durumu' and 'derse_odaklan'
   focusLessonName?: string;
-  focusLessonCompletion?: number; // 0-1
+  focusLessonCompletion?: number; // 0–1
   focusLessonKeyfiDelayCount?: number;
-  // 'gun_bos' için
-  emptyDayName?: string; // örn. "Cuma"
+  // For 'gun_bos'
+  emptyDayName?: string;
   emptyDayBlockCount?: number;
-  // Uyku & performans ilişkisi (profilde yeterli veri varsa)
+  // Sleep & performance correlation
   sleepMetrics?: {
     goodSleepCompletionRate: number;
     badSleepCompletionRate: number | null;
@@ -34,36 +36,47 @@ export interface WhatIfInput {
 }
 
 const SCENARIO_LABELS: Record<WhatIfScenario, string> = {
-  daha_fazla_calis: 'Daha fazla çalışırsam ne olur?',
-  ders_durumu: 'Bu derste durumum nasıl?',
-  calisma_tarzi: 'Nasıl çalışmak bana daha uygun görünüyor?',
-  derse_odaklan: 'Bir derse daha fazla odaklanırsam ne olur?',
-  gun_bos: 'O gün çalışamazsam ne olur?',
+  daha_fazla_calis: 'What happens if I study more?',
+  ders_durumu: 'Where do I stand in this lesson?',
+  calisma_tarzi: 'What study style suits me best?',
+  derse_odaklan: 'What if I focus more on one lesson?',
+  gun_bos: 'What if I can\'t study that day?',
 };
 
 export function buildWhatIfPrompt(input: WhatIfInput): string {
   const lines: string[] = [];
 
-  lines.push('Sen bir öğrenci çalışma takip sisteminde eğitim koçusun.');
-  lines.push('Öğrencinin seçtiği senaryoyu veriye dayalı ama koç gibi — destekleyici, yargısız — açıklayacaksın.');
-  lines.push('Planı değiştirme, sadece olası etkiyi ve uygulanabilir bir öneriyi açıkla.');
-  lines.push('Türkçe yaz, 3-5 cümle, madde işareti kullanma.');
+  lines.push('You are a study coach in a student progress tracking system.');
+  lines.push('Explain the selected scenario to the student in a data-driven but supportive, non-judgmental coaching tone.');
+  lines.push('Write in English. Maximum 3 sentences. No bullet points.');
+  lines.push('IMPORTANT: Do not suggest specific session lengths, times of day, which day to study, or how to arrange blocks — the planner handles all scheduling. Focus only on the likely outcome and one motivational or risk-awareness insight.');
   lines.push('');
 
-  lines.push(`Senaryo: "${SCENARIO_LABELS[input.scenario]}"`);
+  lines.push(`Scenario: "${SCENARIO_LABELS[input.scenario]}"`);
   lines.push('');
 
-  // Profil
+  // Profile
   if (input.profile) {
     const p = input.profile;
-    lines.push('Öğrencinin son 7 günlük durumu:');
-    lines.push(`- Tamamlama oranı: %${Math.round(p.completionRate7d * 100)}`);
-    lines.push(`- Ortalama stres: ${p.avgStress7d.toFixed(1)} / 5`);
-    lines.push(`- Çalışma istikrarı: %${Math.round(p.consistencyScore * 100)}`);
+    lines.push('Student\'s last 7 days:');
+    lines.push(`- Completion rate: ${Math.round(p.completionRate7d * 100)}%`);
+    lines.push(`- Average stress: ${p.avgStress7d.toFixed(1)} / 5`);
+    lines.push(`- Study consistency: ${Math.round(p.consistencyScore * 100)}%`);
+    if (p.hasUpcomingExam) {
+      lines.push(`- Typical stress when an exam is close: ${p.stressNearExam.toFixed(1)} / 5`);
+      const stressDelta = p.avgStress7d - p.stressNearExam;
+      if (stressDelta >= 0.5) {
+        lines.push(`  → Current stress is ${stressDelta.toFixed(1)} points above their own exam baseline`);
+      } else if (stressDelta <= -0.5) {
+        lines.push(`  → Current stress is ${Math.abs(stressDelta).toFixed(1)} points below their own exam baseline — relatively calm`);
+      } else {
+        lines.push(`  → Current stress is in line with their typical exam-period level`);
+      }
+    }
     lines.push('');
   }
 
-  // Uyku & performans ilişkisi
+  // Sleep & performance correlation
   if (input.sleepMetrics) {
     const s = input.sleepMetrics;
     const compDiff = s.badSleepCompletionRate !== null
@@ -74,70 +87,70 @@ export function buildWhatIfPrompt(input: WhatIfInput): string {
       : null;
 
     if (compDiff !== null || stressDiff !== null) {
-      lines.push('Uyku & performans ilişkisi (son 14 gün):');
+      lines.push('Sleep & performance correlation (last 14 days):');
       if (compDiff !== null) {
-        lines.push(`- İyi uyuduğu günlerde tamamlama oranı %${Math.round(s.goodSleepCompletionRate * 100)}, kötü uyuduğu günlerde %${Math.round((s.badSleepCompletionRate ?? 0) * 100)} (fark: %${compDiff})`);
+        lines.push(`- Completion rate on good-sleep days: ${Math.round(s.goodSleepCompletionRate * 100)}%, on poor-sleep days: ${Math.round((s.badSleepCompletionRate ?? 0) * 100)}% (difference: ${compDiff}%)`);
       }
       if (stressDiff !== null) {
-        lines.push(`- İyi uyuduğu günlerde ortalama stres ${s.goodSleepAvgStress?.toFixed(1)}, kötü uyuduğu günlerde ${s.badSleepAvgStress?.toFixed(1)} (fark: ${stressDiff})`);
+        lines.push(`- Average stress on good-sleep days: ${s.goodSleepAvgStress?.toFixed(1)}, on poor-sleep days: ${s.badSleepAvgStress?.toFixed(1)} (difference: ${stressDiff})`);
       }
       lines.push('');
     }
   }
 
-  // Yaklaşan sınavlar
+  // Upcoming exams
   if (input.upcomingExams.length > 0) {
-    lines.push('Yaklaşan sınavlar (14 gün içinde):');
+    lines.push('Upcoming exams (within 14 days):');
     for (const e of input.upcomingExams) {
-      lines.push(`- ${e.lessonName}: ${e.daysLeft} gün kaldı, zorluk ${e.difficulty}/5`);
+      lines.push(`- ${e.lessonName}: ${e.daysLeft} days left, difficulty ${e.difficulty}/5`);
     }
     lines.push('');
   }
 
-  // Senaryoya özel context
+  // Scenario-specific context
   switch (input.scenario) {
     case 'daha_fazla_calis':
-      lines.push('Bağlam: Öğrenci mevcut tamamlama oranına bakarak daha fazla çalışmanın ne fark yaratacağını merak ediyor.');
-      lines.push('Stres seviyesini göz önünde bulundurarak sürdürülebilirlik açısından değerlendir.');
+      lines.push('Context: The student is wondering what difference it would make to study more, based on their current completion rate.');
+      lines.push('Evaluate sustainability with stress level in mind.');
       break;
 
     case 'ders_durumu':
       if (input.focusLessonName) {
-        lines.push(`Odak ders: ${input.focusLessonName}`);
+        lines.push(`Focus lesson: ${input.focusLessonName}`);
         if (input.focusLessonCompletion !== undefined) {
-          lines.push(`Bu dersteki tamamlama oranı: %${Math.round(input.focusLessonCompletion * 100)}`);
+          lines.push(`Completion rate in this lesson: ${Math.round(input.focusLessonCompletion * 100)}%`);
         }
         if (input.focusLessonKeyfiDelayCount !== undefined && input.focusLessonKeyfiDelayCount > 0) {
-          lines.push(`Erteleme sayısı: ${input.focusLessonKeyfiDelayCount} kez`);
+          lines.push(`Times voluntarily delayed: ${input.focusLessonKeyfiDelayCount}`);
         }
       }
-      lines.push('Bu derste öğrencinin nerede durduğunu ve ne yapması gerektiğini net açıkla.');
+      lines.push('Clearly explain where the student stands in this lesson and what they should do next.');
       break;
 
     case 'calisma_tarzi':
-      lines.push('Bağlam: Öğrenci tamamlama oranı ve istikrar verilerine göre hangi çalışma biçiminin (uzun-seyrek mi, kısa-sık mı) kendine daha uygun olduğunu merak ediyor.');
-      lines.push('Veriyi yorumla ve somut bir öneri ver.');
+      lines.push('Context: Based on their completion rate and consistency data, the student is wondering whether longer-infrequent or shorter-frequent sessions work better for them.');
+      lines.push('Interpret the data and give a concrete recommendation.');
       break;
 
     case 'derse_odaklan':
       if (input.focusLessonName) {
-        lines.push(`Odaklanılmak istenen ders: ${input.focusLessonName}`);
+        lines.push(`Lesson to focus on: ${input.focusLessonName}`);
       }
-      lines.push('Bağlam: Bir derse daha fazla zaman ayırmanın diğer dersleri ve sınav riskini nasıl etkileyebileceğini açıkla.');
+      lines.push('Context: Explain how allocating more time to one lesson might affect the others and overall exam risk.');
       if (input.upcomingExams.length > 1) {
-        lines.push('Birden fazla sınav yakın olduğu için dengeyi vurgula.');
+        lines.push('Multiple exams are coming up, so emphasise the importance of balance.');
       }
       break;
 
     case 'gun_bos':
       if (input.emptyDayName) {
-        lines.push(`Boş kalacak gün: ${input.emptyDayName}`);
+        lines.push(`Day off: ${input.emptyDayName}`);
         if (input.emptyDayBlockCount !== undefined) {
-          lines.push(`O gün planlanmış blok sayısı: ${input.emptyDayBlockCount}`);
+          lines.push(`Blocks planned for that day: ${input.emptyDayBlockCount}`);
         }
       }
-      lines.push('Bağlam: O günü tamamen boş bırakmanın haftalık plan üzerindeki olası etkisini açıkla.');
-      lines.push('Telafi önerisi sun ama planı kendin değiştirme.');
+      lines.push('Context: Explain the likely impact of skipping that day entirely on the weekly plan.');
+      lines.push('Suggest a way to make up for it, but do not modify the plan yourself.');
       break;
   }
 

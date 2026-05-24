@@ -13,7 +13,7 @@ export class AiCoachService {
 
   // ── What-if ───────────────────────────────────────────────────────────────
 
-  /** Kullanıcının seçtiği what-if senaryosuna göre AI yanıtı üretir. Planner'a dokunmaz. */
+  /** Generates an AI response for the user's selected what-if scenario. Does not touch the planner. */
   async whatIfPreview(
     userId: number,
     scenario: WhatIfScenario,
@@ -49,7 +49,7 @@ export class AiCoachService {
         .filter((e) => e.daysLeft >= 0 && e.daysLeft <= 14),
     );
 
-    // Odak ders context'i — ders_durumu / derse_odaklan senaryoları için
+    // Focus-lesson context — for 'ders_durumu' / 'derse_odaklan' scenarios
     let focusLessonName: string | undefined;
     let focusLessonCompletion: number | undefined;
     let focusLessonKeyfiDelayCount: number | undefined;
@@ -89,7 +89,15 @@ export class AiCoachService {
 
     const prompt = buildWhatIfPrompt({
       scenario,
-      profile,
+      profile: profile
+        ? {
+            completionRate7d: profile.completionRate7d,
+            avgStress7d: profile.avgStress7d,
+            consistencyScore: profile.consistencyScore,
+            stressNearExam: profile.stressNearExam,
+            hasUpcomingExam: upcomingExams.length > 0,
+          }
+        : null,
       upcomingExams,
       focusLessonName,
       focusLessonCompletion,
@@ -107,7 +115,7 @@ export class AiCoachService {
 
   // ── Daily coach ───────────────────────────────────────────────────────────
 
-  /** Öğrencinin günlük durumuna göre koçluk mesajı üretir. Planner'a dokunmaz. */
+  /** Generates a coaching message based on the student's daily situation. Does not touch the planner. */
   async getDailyCoachMessage(userId: number) {
     const now = getCurrentTime();
     const weekStart = this.getWeekStart(now);
@@ -138,7 +146,7 @@ export class AiCoachService {
         .filter((e) => e.daysLeft >= 0 && e.daysLeft <= 14),
     );
 
-    // Bu haftaki blok özeti — ders bazında topla
+    // This week's block summary — aggregate per lesson
     const blockMap = new Map<number, { lessonName: string; blockCount: number; isReview: boolean }>();
     for (const block of weekBlocks) {
       const existing = blockMap.get(block.lessonId);
@@ -169,7 +177,15 @@ export class AiCoachService {
       : null;
 
     const prompt = buildCoachPrompt({
-      profile,
+      profile: profile
+        ? {
+            completionRate7d: profile.completionRate7d,
+            avgStress7d: profile.avgStress7d,
+            consistencyScore: profile.consistencyScore,
+            stressNearExam: profile.stressNearExam,
+            hasUpcomingExam: upcomingExams.length > 0,
+          }
+        : null,
       upcomingExams,
       weeklyFeedback: (lastFeedback?.weekloadFeedback as any) ?? null,
       thisWeekBlocks: [...blockMap.values()],
@@ -181,9 +197,9 @@ export class AiCoachService {
     return { message };
   }
 
-  // ── OpenRouter çağrısı ────────────────────────────────────────────────────
+  // ── OpenRouter call ───────────────────────────────────────────────────────
 
-  /** OpenRouter üzerinden AI çağrısı yapar. caller parametresi log'da görünür. */
+  /** Makes an AI call via OpenRouter. The caller parameter appears in logs. */
   private async callAi(prompt: string, caller: string): Promise<string> {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -226,7 +242,7 @@ export class AiCoachService {
     }
   }
 
-  // ── Yardımcılar ───────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   private getWeekStart(date: Date): Date {
     const d = new Date(date);

@@ -13,7 +13,7 @@ export class SystemFeedbackService {
     const messages: Array<{ type: string; message: string; suggestion: string }> = [];
     let overridesWritten = 0;
 
-    // ── Veri çek ───────────────────────────────────────────────────────────
+    // ── Fetch data ────────────────────────────────────────────────────────────
     const recentFeedbacks = await this.prisma.weeklyFeedback.findMany({
       where: { userId },
       orderBy: { weekStart: 'desc' },
@@ -51,39 +51,45 @@ export class SystemFeedbackService {
 
     const lastFeedback = recentFeedbacks[0] ?? null;
 
-    // ── S3: Yoğun ama başarılı ─────────────────────────────────────────────
-    if (lastFeedback?.weekloadFeedback === 'cok_yogundu' && profile && profile.completionRate7d >= 0.85) {
-      if (!await this.isOnCooldown(userId, 'yogun_ama_basarili')) {
-        console.log(`[SF] ✓ yogun_ama_basarili`);
-        messages.push({
-          type: 'yogun_ama_basarili',
-          message: 'Geçen haftayı yoğun hissettin ama planladığın çalışmaların büyük kısmını tamamladın.',
-          suggestion: 'Toplam süreyi azaltmak yerine zor dersleri daha dengeli günlere yaydım.',
-        });
-        await this.logFeedback(userId, 'yogun_ama_basarili');
-      } else { console.log(`[SF] ⏭ yogun_ama_basarili (cooldown)`); }
-    }
-
-    // ── S4: Süre istiyor ama tamamlayamıyor ───────────────────────────────
-    if (profile && profile.completionRate7d < 0.65 && lastFeedback) {
+    // ── S4: Wants more time but can't complete (lesson-level completion check) ──
+    if (lastFeedback) {
       const needsMoreTimeLessons = lastFeedback.lessonFeedbacks.filter((lf) => lf.needsMoreTime === 1);
       const lessonMap = new Map(lessons.map((l) => [l.id, l]));
+
       for (const lf of needsMoreTimeLessons) {
         const lesson = lessonMap.get(lf.lessonId);
         if (!lesson) continue;
-        if (!await this.isOnCooldown(userId, 'sure_isteme_ama_tamamlayamama', lf.lessonId)) {
-          console.log(`[SF] ✓ sure_isteme_ama_tamamlayamama -> ${lesson.name}`);
-          messages.push({
-            type: 'sure_isteme_ama_tamamlayamama',
-            message: `${lesson.name} için daha fazla zamana ihtiyaç duyduğunu belirttin; ancak son oturumların bir kısmı tamamlanmamış.`,
-            suggestion: 'Süreyi artırmak yerine bu dersi daha kısa ve sık oturumlara böldüm.',
-          });
-          await this.logFeedback(userId, 'sure_isteme_ama_tamamlayamama', lf.lessonId);
-        } else { console.log(`[SF] ⏭ sure_isteme_ama_tamamlayamama -> ${lesson.name} (cooldown)`); }
+
+        // Ders bazlı completion hesapla (son 7 gün)
+        let lessonPlanned = 0, lessonCompleted = 0;
+        for (const checklist of recentChecklists) {
+          for (const item of checklist.items) {
+            if (item.lessonId !== lesson.id) continue;
+            lessonPlanned += item.plannedBlocks;
+            lessonCompleted += item.completedBlocks;
+          }
+        }
+
+        // Yeterli veri yoksa atla
+        if (lessonPlanned < 2) continue;
+        const lessonCompletion = lessonCompleted / lessonPlanned;
+
+        // Ders bazlı completion < %55 ise tetikle
+        if (lessonCompletion < 0.55) {
+          if (!await this.isOnCooldown(userId, 'sure_isteme_ama_tamamlayamama', lf.lessonId)) {
+            console.log(`[SF] ✓ sure_isteme_ama_tamamlayamama -> ${lesson.name} (completion=%${Math.round(lessonCompletion * 100)})`);
+            messages.push({
+              type: 'sure_isteme_ama_tamamlayamama',
+              message: `You requested more time for ${lesson.name}, but completion is still at ${Math.round(lessonCompletion * 100)}% — extra blocks have been added but aren't being finished.`,
+              suggestion: `More time alone may not be the issue — difficulty or focus could be the real barrier. The extra blocks are there; try starting with just one.`,
+            });
+            await this.logFeedback(userId, 'sure_isteme_ama_tamamlayamama', lf.lessonId);
+          } else { console.log(`[SF] ⏭ sure_isteme_ama_tamamlayamama -> ${lesson.name} (cooldown)`); }
+        }
       }
     }
 
-    // ── S5 & S6: Sınav yakın ───────────────────────────────────────────────
+    // ── S5 & S6: Exam approaching ─────────────────────────────────────────────
     const blocksPerLesson: Record<number, number> = {};
     for (const block of scheduledThisWeek) {
       blocksPerLesson[block.lessonId] = (blocksPerLesson[block.lessonId] ?? 0) + block.blockCount;
@@ -109,8 +115,8 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ sinav_az_calisma -> ${lesson.name} (${daysLeft}g kaldi, %${Math.round(lessonCompleted/lessonPlanned*100)} tamamlandi)`);
           messages.push({
             type: 'sinav_az_calisma',
-            message: `${lesson.name} sınavına ${daysLeft} gün kaldı ama oturumların büyük kısmı tamamlanmamış — ders riskli.`,
-            suggestion: 'Kalan günlerde bu derse öncelik ver.',
+            message: `${lesson.name} exam is ${daysLeft} days away, but most sessions are incomplete — this lesson is at risk.`,
+            suggestion: 'Prioritise this lesson in the remaining days.',
           });
           await this.logFeedback(userId, 'sinav_az_calisma', lesson.id);
           await this.writeReviewBlockOverride(userId, lesson.id, weekStart);
@@ -124,10 +130,10 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ sinav_az_blok -> ${lesson.name} (${daysLeft}g kaldi, ${allocatedBlocks} blok)`);
           messages.push({
             type: 'sinav_az_blok',
-            message: `${lesson.name} sınavına ${daysLeft} gün kaldı ama bu derse bu hafta yalnızca ${allocatedBlocks} blok ayrılabildi.`,
+            message: `${lesson.name} exam is ${daysLeft} days away, but only ${allocatedBlocks} block(s) could be allocated this week.`,
             suggestion: allocatedBlocks === 0
-              ? 'Müsaitlik durumunu güncellersen yeniden planlayabilirim.'
-              : 'Diğer derslerin bloklarını kısa tutarak bu derse öncelik ver.',
+              ? 'Update your availability and I\'ll reschedule.'
+              : 'Keep other lessons\' blocks short and prioritise this one.',
           });
           await this.logFeedback(userId, 'sinav_az_blok', lesson.id);
           await this.writePriorityOverride(userId, lesson.id, weekStart, 3);
@@ -136,7 +142,7 @@ export class SystemFeedbackService {
       }
     }
 
-    // ── T3: İki hafta üst üste yoğun ──────────────────────────────────────
+    // ── T3: Two consecutive heavy weeks ──────────────────────────────────────
     if (recentFeedbacks.length >= 2) {
       const last2 = recentFeedbacks.slice(0, 2);
       if (last2.every((f) => f.weekloadFeedback === 'cok_yogundu')) {
@@ -144,44 +150,44 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ asiri_yuk`);
           messages.push({
             type: 'asiri_yuk',
-            message: 'İki haftadır program çok yoğun geliyor. Önümüzdeki hafta otomatik %15 hafifletildi.',
-            suggestion: "BusyTime'ları gözden geçirmeyi düşün.",
+            message: 'Your schedule has felt too heavy for two weeks in a row. Next week has been automatically lightened by 15%.',
+            suggestion: 'Consider reviewing your busy-time slots.',
           });
           await this.logFeedback(userId, 'asiri_yuk');
         } else { console.log(`[SF] ⏭ asiri_yuk (cooldown)`); }
       }
     }
 
-    // ── Sık erteleme ──────────────────────────────────────────────────────
+    // ── Frequent delays ───────────────────────────────────────────────────────
     for (const lesson of lessons) {
       if (lesson.keyfiDelayCount >= 2) {
         if (!await this.isOnCooldown(userId, 'sik_erteleme', lesson.id)) {
           console.log(`[SF] ✓ sik_erteleme -> ${lesson.name} (${lesson.keyfiDelayCount}x)`);
           messages.push({
             type: 'sik_erteleme',
-            message: `${lesson.name} sık erteleniyor — slotlu mod devreye alındı.`,
-            suggestion: 'Sistem bu dersi öncelikli sıraya aldı. Sen de çalışmaya başlarken en kısa oturumla bile olsa bir adım at.',
+            message: `${lesson.name} has been delayed multiple times — the planner has switched it to slot mode.`,
+            suggestion: 'The planner has switched this lesson to slot mode — it now gets a guaranteed spot every few days instead of being scheduled flexibly. Try to complete at least one of those fixed sessions this week.',
           });
           await this.logFeedback(userId, 'sik_erteleme', lesson.id);
         } else { console.log(`[SF] ⏭ sik_erteleme -> ${lesson.name} (cooldown)`); }
       }
     }
 
-    // ── Yüksek stres ──────────────────────────────────────────────────────
+    // ── High stress ───────────────────────────────────────────────────────────
     const last3Checklists = recentChecklists.slice(0, 3);
     if (last3Checklists.length >= 3 && last3Checklists.every((c) => c.stressLevel >= 4)) {
       if (!await this.isOnCooldown(userId, 'yuksek_stres')) {
         console.log(`[SF] ✓ yuksek_stres (levels: ${last3Checklists.map(c => c.stressLevel).join(',')})`);
         messages.push({
           type: 'yuksek_stres',
-          message: 'Son 3 gündür stres seviyeniz yüksek (≥4).',
-          suggestion: 'Meşguliyeti gözden geçirmeyi veya daha hafif bir hafta planlamayı düşün.',
+          message: 'Your stress level has been high (≥4) for 3 days in a row.',
+          suggestion: 'Consider reviewing your workload or planning a lighter week.',
         });
         await this.logFeedback(userId, 'yuksek_stres');
       } else { console.log(`[SF] ⏭ yuksek_stres (cooldown)`); }
     }
 
-    // ── Hareketsizlik ─────────────────────────────────────────────────────
+    // ── Inactivity ────────────────────────────────────────────────────────────
     const last2Checklists = recentChecklists.slice(0, 2);
     if (
       last2Checklists.length >= 2 &&
@@ -191,14 +197,14 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ hareketsizlik`);
         messages.push({
           type: 'hareketsizlik',
-          message: 'Son 2 gündür hiç çalışma bloğu tamamlanmadı.',
-          suggestion: 'Bugün kısa bir oturumla başlamayı dene — 30 dakika bile fark yaratır.',
+          message: 'No study blocks have been completed in the last 2 days.',
+          suggestion: 'Try starting with a short session today — even 30 minutes makes a difference.',
         });
         await this.logFeedback(userId, 'hareketsizlik');
       } else { console.log(`[SF] ⏭ hareketsizlik (cooldown)`); }
     }
 
-    // ── Sınav yoğunluğu öngörüsü ─────────────────────────────────────────
+    // ── Exam intensity forecast ───────────────────────────────────────────────
     const upcomingExams: { lessonName: string; daysLeft: number; difficulty: number }[] = [];
     for (const lesson of lessons) {
       for (const exam of lesson.exams) {
@@ -226,24 +232,24 @@ export class SystemFeedbackService {
     }
 
     if (examIntensityScore >= 9) {
-      const examList = upcomingExams.map(e => `${e.lessonName} (${e.daysLeft}g)`).join(', ');
+      const examList = upcomingExams.map(e => `${e.lessonName} (${e.daysLeft}d)`).join(', ');
       if (!await this.isOnCooldown(userId, 'sinav_yogunlugu_kritik')) {
         console.log(`[SF] ✓ sinav_yogunlugu_kritik`);
         messages.push({
           type: 'sinav_yogunlugu_kritik',
-          message: `Önümüzdeki haftada yoğun bir sınav dönemi var: ${examList}. Acil hazırlık modu gerekiyor.`,
-          suggestion: 'Bu hafta sınav olan derslere odaklan, diğer dersleri kısalt — ama planı sistem zaten buna göre ayarladı.',
+          message: `Critical exam week ahead: ${examList}. These are very close — now is the time to focus.`,
+          suggestion: 'Your exam lessons are the priority right now. Everything else can wait.',
         });
         await this.logFeedback(userId, 'sinav_yogunlugu_kritik');
       } else { console.log(`[SF] ⏭ sinav_yogunlugu_kritik (cooldown)`); }
     } else if (examIntensityScore >= 6) {
-      const examList = upcomingExams.map(e => `${e.lessonName} (${e.daysLeft}g)`).join(', ');
+      const examList = upcomingExams.map(e => `${e.lessonName} (${e.daysLeft}d)`).join(', ');
       if (!await this.isOnCooldown(userId, 'sinav_yogunlugu_yogun')) {
         console.log(`[SF] ✓ sinav_yogunlugu_yogun`);
         messages.push({
           type: 'sinav_yogunlugu_yogun',
-          message: `Önümüzdeki hafta yoğun: ${examList}. İyi bir hazırlık için bu haftadan başla.`,
-          suggestion: 'Sınav derslerine öncelik ver, yeni konu girişini ertele.',
+          message: `A heavy week is coming up: ${examList}. Time to shift focus toward your exam lessons.`,
+          suggestion: 'Give extra attention to your exam lessons this week — other topics can stay light.',
         });
         await this.logFeedback(userId, 'sinav_yogunlugu_yogun');
       } else { console.log(`[SF] ⏭ sinav_yogunlugu_yogun (cooldown)`); }
@@ -252,14 +258,14 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ sinav_yogunlugu_orta`);
         messages.push({
           type: 'sinav_yogunlugu_orta',
-          message: `Önümüzdeki hafta ${upcomingExams.length} sınav var. Orta yoğunlukta bir hafta seni bekliyor.`,
-          suggestion: 'Sınav derslerine biraz daha ağırlık ver.',
+          message: `You have ${upcomingExams.length} exam(s) coming up this week. Start preparing now if you haven't already.`,
+          suggestion: 'A bit of extra focus on your exam lessons now will make a real difference later.',
         });
         await this.logFeedback(userId, 'sinav_yogunlugu_orta');
       } else { console.log(`[SF] ⏭ sinav_yogunlugu_orta (cooldown)`); }
     }
 
-    // ── Program yoğunluğu öngörüsü ────────────────────────────────────────
+    // ── Schedule load forecast ────────────────────────────────────────────────
     const nextWeekStart = new Date(weekStart);
     nextWeekStart.setDate(nextWeekStart.getDate() + 7);
 
@@ -280,8 +286,8 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ program_yogunlugu_asim (%${Math.round((capacityRatio - 1) * 100)} fazla)`);
           messages.push({
             type: 'program_yogunlugu_asim',
-            message: `Önümüzdeki hafta ders programı geçmiş haftaların ortalamasının %${Math.round((capacityRatio - 1) * 100)} üzerinde.`,
-            suggestion: 'Görevleri günler arasında dengeli dağıtmak ister misin?',
+            message: `Next week's schedule is ${Math.round((capacityRatio - 1) * 100)}% above your recent average capacity — some blocks may go unfinished.`,
+            suggestion: 'This is a heads-up, not a change. If the week feels too heavy, your feedback after it will help the system adjust.',
           });
           await this.logFeedback(userId, 'program_yogunlugu_asim');
         } else { console.log(`[SF] ⏭ program_yogunlugu_asim (cooldown)`); }
@@ -290,15 +296,15 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ program_yogunlugu_dusuk`);
           messages.push({
             type: 'program_yogunlugu_dusuk',
-            message: 'Haftaya ders programın oldukça hafif. Ertelenmiş görevleri tamamlamak için iyi bir fırsat.',
-            suggestion: 'Birikimli dersleri bu haftaya taşıyabilirsin.',
+            message: "Next week looks lighter than usual — a good window to catch up on anything you've fallen behind on.",
+            suggestion: 'Light weeks are valuable. Use the extra headroom to consolidate rather than coast.',
           });
           await this.logFeedback(userId, 'program_yogunlugu_dusuk');
         } else { console.log(`[SF] ⏭ program_yogunlugu_dusuk (cooldown)`); }
       }
     }
 
-    // ── Kombine uyarılar ──────────────────────────────────────────────────
+    // ── Combined alerts ───────────────────────────────────────────────────────
     const hasYogunHafta = messages.some(m =>
       m.type === 'sinav_yogunlugu_kritik' || m.type === 'sinav_yogunlugu_yogun' || m.type === 'program_yogunlugu_asim'
     );
@@ -310,8 +316,8 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ kombine_yogun_stres`);
         messages.push({
           type: 'kombine_yogun_stres',
-          message: 'Hem programın yoğun hem de stres seviyenin yüksek. Bu kombinasyon öğrenmeni ciddi etkiler.',
-          suggestion: 'Bugünkü çalışma bloğunu kısalt, yeniden planlama kritik.',
+          message: 'Your schedule is heavy and your stress is high at the same time. This combination can seriously hurt your learning.',
+          suggestion: 'Shorten today\'s study blocks — rescheduling is critical.',
         });
         await this.logFeedback(userId, 'kombine_yogun_stres');
       } else { console.log(`[SF] ⏭ kombine_yogun_stres (cooldown)`); }
@@ -322,14 +328,14 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ kombine_yogun_erteleme`);
         messages.push({
           type: 'kombine_yogun_erteleme',
-          message: 'Önümüzdeki hafta yoğun ve geçmişte bu yoğunlukta erteleme oranı artmış.',
-          suggestion: 'Erteleme eğilimli dersleri haftanın başına al.',
+          message: 'A heavy week is ahead and your delay rate has historically increased under this kind of load.',
+          suggestion: 'The planner is already aware of this pattern — it has prioritised your delayed lessons. Try to honour at least one session for each.',
         });
         await this.logFeedback(userId, 'kombine_yogun_erteleme');
       } else { console.log(`[SF] ⏭ kombine_yogun_erteleme (cooldown)`); }
     }
 
-    // ── Uyku & stres tetikleyicisi ────────────────────────────────────────
+    // ── Sleep & stress trigger ────────────────────────────────────────────────
     const recentSleep = await this.prisma.dailyChecklist.findMany({
       where: {
         userId,
@@ -346,26 +352,25 @@ export class SystemFeedbackService {
 
       if (badSleepDays.length >= 2 && avgStress >= 3.5) {
         if (!await this.isOnCooldown(userId, 'dusuk_uyku_stres')) {
-          // Profildeki uyku metrikleriyle kişiselleştirilmiş mesaj üret
           const goodComp = profile?.goodSleepCompletionRate;
           const badComp = profile?.badSleepCompletionRate;
           const goodStress = profile?.goodSleepAvgStress;
           const badStress = profile?.badSleepAvgStress;
 
-          let message = 'Son günlerde uyku düzenin bozulmuş görünüyor ve stres seviyen de yüksek.';
-          let suggestion = 'Çalışma verimini korumak için önce uyku düzenini stabilize etmeye çalış.';
+          let message = 'Your sleep has been irregular lately and your stress is running high.';
+          let suggestion = 'Try to stabilise your sleep first — it\'s the foundation of study performance.';
 
-          // Yeterli veri varsa kişiselleştirilmiş mesaj oluştur
+          // Personalised message when sufficient data exists
           if (goodComp !== null && goodComp !== undefined && badComp !== null && badComp !== undefined) {
             const compDiff = Math.round((goodComp - badComp) * 100);
             if (compDiff >= 15) {
-              message = `Kötü uyuduğun günlerde tamamlama oranın %${compDiff} düşüyor — uyku düzenin çalışma verimini doğrudan etkiliyor.`;
+              message = `Your completion rate drops by ${compDiff}% on poor-sleep days — sleep directly affects your productivity.`;
             }
           }
           if (goodStress !== null && goodStress !== undefined && badStress !== null && badStress !== undefined) {
             const stressDiff = (badStress - goodStress).toFixed(1);
             if (parseFloat(stressDiff) >= 0.8) {
-              suggestion = `İyi uyuduğun günlerde stresin ${stressDiff} puan daha düşük. Uyku düzenini korumak bu hafta önceliğin olsun.`;
+              suggestion = `Your stress is ${stressDiff} points lower on good-sleep days. Make consistent sleep your top priority this week.`;
             }
           }
 
@@ -375,7 +380,7 @@ export class SystemFeedbackService {
         } else { console.log(`[SF] ⏭ dusuk_uyku_stres (cooldown)`); }
       }
     }
-    // ──────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     console.log(`[SF] SONUC: ${messages.length} mesaj → [${messages.map(m => m.type).join(', ')}]`);
 
@@ -417,9 +422,29 @@ export class SystemFeedbackService {
     console.log(`[SF] override yazildi: lessonId=${lessonId} priorityBoost=+${priorityBoost}`);
   }
 
-  // Cooldown kontrolü — aynı tip+ders kombinasyonu 48 saat içinde tetiklendi mi?
+  // Per-type cooldown durations in hours
+  private readonly cooldownHours: Record<string, number> = {
+    sure_isteme_ama_tamamlayamama:   168, // 7 days — tied to weekly feedback cycle
+    sinav_az_calisma:                24,  // 1 day  — exam approaching fast, daily reminder ok
+    sinav_az_blok:                   168, // 7 days — block allocation is set for the week
+    asiri_yuk:                       168, // 7 days — two-week pattern, weekly cadence enough
+    sik_erteleme:                    48,  // 2 days — delay count can change, check often
+    yuksek_stres:                    24,  // 1 day  — stress is daily data
+    hareketsizlik:                   24,  // 1 day  — inactivity compounds fast
+    sinav_yogunlugu_kritik:          24,  // 1 day  — critical pressure, student needs daily awareness
+    sinav_yogunlugu_yogun:           48,  // 2 days — high but not critical
+    sinav_yogunlugu_orta:            168, // 7 days — moderate load, no need to repeat mid-week
+    program_yogunlugu_asim:          168, // 7 days — schedule is set for the week
+    program_yogunlugu_dusuk:         168, // 7 days — schedule is set for the week
+    kombine_yogun_stres:             24,  // 1 day  — high-urgency combo
+    kombine_yogun_erteleme:          168, // 7 days — pattern-based, weekly enough
+    dusuk_uyku_stres:                24,  // 1 day  — sleep is daily data, situation changes fast
+  };
+
+  // Cooldown check — has this type+lesson combination been triggered recently?
   private async isOnCooldown(userId: number, type: string, lessonId?: number): Promise<boolean> {
-    const since = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const hours = this.cooldownHours[type] ?? 48;
+    const since = new Date(getCurrentTime().getTime() - hours * 60 * 60 * 1000);
     const log = await this.prisma.systemFeedbackLog.findFirst({
       where: {
         userId,

@@ -3,6 +3,8 @@ export interface CoachPromptInput {
     completionRate7d: number;
     avgStress7d: number;
     consistencyScore: number;
+    stressNearExam: number;
+    hasUpcomingExam: boolean;
   } | null;
   upcomingExams: Array<{
     lessonName: string;
@@ -15,12 +17,10 @@ export interface CoachPromptInput {
     blockCount: number;
     isReview: boolean;
   }>;
-  // Sık ertelenen dersler
   delayedLessons: Array<{
     lessonName: string;
     delayCount: number;
   }>;
-  // Uyku & performans ilişkisi
   sleepMetrics?: {
     goodSleepCompletionRate: number;
     badSleepCompletionRate: number | null;
@@ -32,62 +32,73 @@ export interface CoachPromptInput {
 export function buildCoachPrompt(input: CoachPromptInput): string {
   const lines: string[] = [];
 
-  lines.push('Sen bir öğrenci çalışma takip sisteminde kişisel eğitim koçusun.');
-  lines.push('Öğrencinin günlük durumuna bakarak kısa, motive edici ve uygulanabilir bir koçluk mesajı üreteceksin.');
-  lines.push('Yargılama, eleştiri yok. Türkçe yaz. 2-4 cümle. Madde işareti kullanma.');
+  lines.push('You are a personal study coach in a student progress tracking system.');
+  lines.push('Based on the student\'s current situation, generate a short, motivating, and actionable coaching message.');
+  lines.push('No judgment or criticism. Write in English. Maximum 3 sentences. No bullet points.');
+  lines.push('IMPORTANT: Do not suggest session lengths, scheduling, block placement, or timing — the planner handles that. Focus on mindset, awareness of risk, or one behavioural nudge.');
   lines.push('');
-
-  // Profil
+  // Profile
   if (input.profile) {
     const p = input.profile;
-    lines.push('Öğrencinin son 7 günlük durumu:');
-    lines.push(`- Tamamlama oranı: %${Math.round(p.completionRate7d * 100)}`);
-    lines.push(`- Ortalama stres: ${p.avgStress7d.toFixed(1)} / 5`);
-    lines.push(`- Çalışma istikrarı: %${Math.round(p.consistencyScore * 100)}`);
+    lines.push('Student\'s last 7 days:');
+    lines.push(`- Completion rate: ${Math.round(p.completionRate7d * 100)}%`);
+    lines.push(`- Average stress: ${p.avgStress7d.toFixed(1)} / 5`);
+    lines.push(`- Study consistency: ${Math.round(p.consistencyScore * 100)}%`);
+    if (p.hasUpcomingExam) {
+      lines.push(`- Typical stress when an exam is close: ${p.stressNearExam.toFixed(1)} / 5`);
+      const stressDelta = p.avgStress7d - p.stressNearExam;
+      if (stressDelta >= 0.5) {
+        lines.push(`  → Current stress is ${stressDelta.toFixed(1)} points above their own exam baseline — higher than usual even for exam season`);
+      } else if (stressDelta <= -0.5) {
+        lines.push(`  → Current stress is ${Math.abs(stressDelta).toFixed(1)} points below their own exam baseline — relatively calm`);
+      } else {
+        lines.push(`  → Current stress is in line with their typical exam-period level`);
+      }
+    }
     lines.push('');
   }
 
-  // Bu haftaki bloklar
+  // This week's blocks
   if (input.thisWeekBlocks.length > 0) {
     const totalBlocks = input.thisWeekBlocks.reduce((s, b) => s + b.blockCount, 0);
     const lessonSummary = input.thisWeekBlocks
       .filter((b) => !b.isReview)
-      .map((b) => `${b.lessonName} (${b.blockCount} blok)`)
+      .map((b) => `${b.lessonName} (${b.blockCount} blocks)`)
       .join(', ');
-    lines.push(`Bu haftaki plan: toplam ${totalBlocks} blok — ${lessonSummary}`);
+    lines.push(`This week's plan: ${totalBlocks} total blocks — ${lessonSummary}`);
     lines.push('');
   }
 
-  // Geçen hafta feedback
+  // Last week's feedback
   if (input.weeklyFeedback) {
     const feedbackMap = {
-      cok_yogundu: 'Geçen haftayı çok yoğun buldu.',
-      tam_uygundu: 'Geçen haftayı dengeli buldu.',
-      yetersizdi: 'Geçen haftayı yetersiz buldu.',
+      cok_yogundu: 'Found last week too heavy.',
+      tam_uygundu: 'Found last week well-balanced.',
+      yetersizdi: 'Found last week insufficient.',
     };
-    lines.push(`Geçen hafta değerlendirmesi: ${feedbackMap[input.weeklyFeedback]}`);
+    lines.push(`Last week's self-assessment: ${feedbackMap[input.weeklyFeedback]}`);
     lines.push('');
   }
 
-  // Yaklaşan sınavlar
+  // Upcoming exams
   if (input.upcomingExams.length > 0) {
-    lines.push('Yaklaşan sınavlar:');
+    lines.push('Upcoming exams:');
     for (const e of input.upcomingExams) {
-      lines.push(`- ${e.lessonName}: ${e.daysLeft} gün kaldı, zorluk ${e.difficulty}/5`);
+      lines.push(`- ${e.lessonName}: ${e.daysLeft} days left, difficulty ${e.difficulty}/5`);
     }
     lines.push('');
   }
 
-  // Sık ertelenen dersler
+  // Frequently delayed lessons
   if (input.delayedLessons.length > 0) {
-    lines.push('Sık ertelenen dersler:');
+    lines.push('Frequently delayed lessons:');
     for (const d of input.delayedLessons) {
-      lines.push(`- ${d.lessonName}: ${d.delayCount} kez ertelendi`);
+      lines.push(`- ${d.lessonName}: delayed ${d.delayCount} times`);
     }
     lines.push('');
   }
 
-  // Uyku & performans ilişkisi
+  // Sleep & performance correlation
   if (input.sleepMetrics) {
     const s = input.sleepMetrics;
     const compDiff = s.badSleepCompletionRate !== null
@@ -98,19 +109,19 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
       : null;
 
     if (compDiff !== null || stressDiff !== null) {
-      lines.push('Uyku & performans ilişkisi (kişisel veri, son 14 gün):');
+      lines.push('Sleep & performance correlation (personal data, last 14 days):');
       if (compDiff !== null) {
-        lines.push(`- İyi uyuduğu günlerde tamamlama oranı %${Math.round(s.goodSleepCompletionRate * 100)}, kötü uyuduğu günlerde %${Math.round((s.badSleepCompletionRate ?? 0) * 100)}`);
+        lines.push(`- Completion rate on good-sleep days: ${Math.round(s.goodSleepCompletionRate * 100)}%, on poor-sleep days: ${Math.round((s.badSleepCompletionRate ?? 0) * 100)}%`);
       }
       if (stressDiff !== null) {
-        lines.push(`- Kötü uyuduğu günlerde stres ${stressDiff} puan daha yüksek`);
+        lines.push(`- Stress is ${stressDiff} points higher on poor-sleep days`);
       }
       lines.push('');
     }
   }
 
-  lines.push('Yukarıdaki verilere dayanarak öğrenciye bugün için kısa bir koçluk mesajı yaz.');
-  lines.push('Öncelikli odak noktasını belirt (sınav riski, stres, erteleme — hangisi öne çıkıyorsa).');
+  lines.push('Based on the data above, write a short coaching message for the student for today.');
+  lines.push('Identify the top priority focus (exam risk, stress, procrastination — whichever stands out most).');
 
   return lines.join('\n');
 }
