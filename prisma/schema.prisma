@@ -8,6 +8,183 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id                 Int                  @id @default(autoincrement())
+  email              String               @unique
+  passwordHash       String
+  preferredStudyTime StudyTime            @default(morning)
+  studyStyle         StudyStyle           @default(normal)
+  firstWeekStartedAt DateTime?            @default(now())
+  gradeLevel         Int?
+  gpa                Float?
+  academicTerm       String?
+  avatarSvg          String?
+  avatarOptions      Json?
+  checklists         DailyChecklist[]
+  lessons            Lesson[]
+  planOverrides      LessonPlanOverride[]
+  scheduledBlocks    ScheduledBlock[]
+  profile            StudentProfile?
+  feedbackLogs       SystemFeedbackLog[]
+  terms              Term[]
+  busySlots          UserBusySlot[]
+  weeklyFeedbacks    WeeklyFeedback[]
+}
+
+model StudentProfile {
+  id                      Int      @id @default(autoincrement())
+  userId                  Int      @unique
+  updatedAt               DateTime @updatedAt
+  completionRate7d        Float    @default(0)
+  avgStress7d             Float    @default(3)
+  dowCompletionRates      String   @default("[0,0,0,0,0,0,0]")
+  sweetSpotBlocks         Float    @default(2)
+  stressNearExam          Float    @default(3)
+  consistencyScore        Float    @default(0)
+  totalSubmissions        Int      @default(0)
+  badSleepAvgStress       Float?
+  badSleepCompletionRate  Float?
+  goodSleepAvgStress      Float?
+  goodSleepCompletionRate Float?
+  user                    User     @relation(fields: [userId], references: [id])
+}
+
+model UserBusySlot {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  dayOfWeek    Int
+  startTime    String
+  endTime      String
+  fatigueLevel Int
+  date         DateTime?
+  iconKey      String    @default("energy")
+  isRoutine    Boolean   @default(true)
+  user         User      @relation(fields: [userId], references: [id])
+}
+
+model Term {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  name      String?
+  isActive  Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  lessons   Lesson[]
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model Lesson {
+  id                  Int              @id @default(autoincrement())
+  userId              Int
+  name                String
+  difficulty          Int
+  keyfiDelayCount     Int              @default(0)
+  zorunluDelayCount   Int              @default(0)
+  zorunluMissedBlocks Int              @default(0)
+  needsMoreTime       Int              @default(0)
+  termId              Int?
+  term                Term?            @relation(fields: [termId], references: [id])
+  user                User             @relation(fields: [userId], references: [id])
+  deadlines           LessonDeadline[]
+  exams               LessonExam[]
+  scheduledBlocks     ScheduledBlock[]
+}
+
+model LessonExam {
+  id       Int      @id @default(autoincrement())
+  lessonId Int
+  examDate DateTime
+  lesson   Lesson   @relation(fields: [lessonId], references: [id])
+}
+
+model LessonDeadline {
+  id           Int      @id @default(autoincrement())
+  lessonId     Int
+  deadlineDate DateTime
+  title        String?
+  lesson       Lesson   @relation(fields: [lessonId], references: [id])
+}
+
+model ScheduledBlock {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  lessonId   Int
+  date       DateTime
+  startTime  String
+  endTime    String
+  blockCount Int
+  isReview   Boolean  @default(false)
+  completed  Boolean  @default(false)
+  weekStart  DateTime
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model DailyChecklist {
+  id          Int             @id @default(autoincrement())
+  userId      Int
+  date        DateTime
+  stressLevel Int             @default(3)
+  sleptWell   Boolean?
+  items       ChecklistItem[]
+  user        User            @relation(fields: [userId], references: [id])
+}
+
+model ChecklistItem {
+  id              Int            @id @default(autoincrement())
+  checklistId     Int
+  lessonId        Int
+  plannedBlocks   Int
+  completedBlocks Int            @default(0)
+  delayed         Boolean        @default(false)
+  checklist       DailyChecklist @relation(fields: [checklistId], references: [id])
+}
+
+model WeeklyFeedback {
+  id               Int              @id @default(autoincrement())
+  userId           Int
+  weekStart        DateTime
+  weekloadFeedback String
+  lessonFeedbacks  LessonFeedback[]
+  user             User             @relation(fields: [userId], references: [id])
+}
+
+model LessonFeedback {
+  id               Int            @id @default(autoincrement())
+  weeklyFeedbackId Int
+  lessonId         Int
+  needsMoreTime    Int
+  weeklyFeedback   WeeklyFeedback @relation(fields: [weeklyFeedbackId], references: [id])
+}
+
+model SystemFeedbackLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String
+  lessonId    Int?
+  triggeredAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, type, lessonId])
+}
+
+model LessonPlanOverride {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  lessonId           Int?
+  weekStart          DateTime
+  priorityBoost      Int      @default(0)
+  preferEarlySlot    Boolean  @default(false)
+  maxSessionBlocks   Int?
+  multiplierOverride Float?
+  createdAt          DateTime @default(now())
+  addReviewBlock     Boolean  @default(false)
+  user               User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, lessonId, weekStart])
+  @@index([userId, weekStart])
+}
+
 enum StudyTime {
   morning
   afternoon
@@ -20,191 +197,3 @@ enum StudyStyle {
   distributed
   normal
 }
-
-model User {
-  id                 Int                  @id @default(autoincrement())
-  email              String               @unique
-  passwordHash       String
-  firstWeekStartedAt DateTime?            @default(now())
-  preferredStudyTime StudyTime            @default(morning)
-  studyStyle         StudyStyle           @default(normal)
-  busySlots          UserBusySlot[]
-  lessons            Lesson[]
-  terms              Term[]
-  checklists         DailyChecklist[]
-  weeklyFeedbacks    WeeklyFeedback[]
-  scheduledBlocks    ScheduledBlock[]
-  profile            StudentProfile?
-  feedbackLogs       SystemFeedbackLog[]
-  planOverrides      LessonPlanOverride[]
-}
-
-model StudentProfile {
-  id                 Int      @id @default(autoincrement())
-  userId             Int      @unique
-  user               User     @relation(fields: [userId], references: [id])
-  updatedAt          DateTime @updatedAt
-
-  // Rolling 7-day metrics
-  completionRate7d   Float    @default(0)
-  avgStress7d        Float    @default(3)
-
-  // Per-day-of-week completion rates (Mon=0..Sun=6), stored as JSON string
-  dowCompletionRates String   @default("[0,0,0,0,0,0,0]")
-
-  // Avg blockCount in sessions where student fully completed (sweet spot)
-  sweetSpotBlocks    Float    @default(2)
-
-  // Avg stress on days where an exam is <=7 days away
-  stressNearExam     Float    @default(3)
-
-  // % of last 14 days with at least 1 completed block
-  consistencyScore   Float    @default(0)
-
-  // Total submissions used to weight averages
-  totalSubmissions   Int      @default(0)
-
-  goodSleepCompletionRate  Float?
-  badSleepCompletionRate   Float?
-  goodSleepAvgStress       Float?
-  badSleepAvgStress        Float?
-}
-
-
-model UserBusySlot {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  user         User     @relation(fields: [userId], references: [id])
-  dayOfWeek    Int
-  startTime    String
-  endTime      String
-  fatigueLevel Int
-  isRoutine    Boolean  @default(true)
-  date         DateTime?
-  iconKey      String   @default("energy")
-}
-
-model Term {
-  id        Int       @id @default(autoincrement())
-  userId    Int
-  user      User      @relation(fields: [userId], references: [id])
-  name      String?
-  isActive  Boolean   @default(true)
-  startedAt DateTime  @default(now())
-  endedAt   DateTime?
-  lessons   Lesson[]
-}
-
-model Lesson {
-  id                  Int              @id @default(autoincrement())
-  userId              Int
-  user                User             @relation(fields: [userId], references: [id])
-  termId              Int?
-  term                Term?            @relation(fields: [termId], references: [id])
-  name                String
-  difficulty          Int
-  keyfiDelayCount     Int              @default(0)
-  zorunluDelayCount   Int              @default(0)
-  zorunluMissedBlocks Int              @default(0)
-  needsMoreTime       Int              @default(0)
-  exams               LessonExam[]
-  deadlines           LessonDeadline[]
-  scheduledBlocks     ScheduledBlock[]
-}
-
-model LessonExam {
-  id       Int      @id @default(autoincrement())
-  lessonId Int
-  lesson   Lesson   @relation(fields: [lessonId], references: [id])
-  examDate DateTime
-}
-
-model LessonDeadline {
-  id           Int      @id @default(autoincrement())
-  lessonId     Int
-  lesson       Lesson   @relation(fields: [lessonId], references: [id])
-  deadlineDate DateTime
-  title        String?
-}
-
-model ScheduledBlock {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id])
-  lessonId   Int
-  lesson     Lesson   @relation(fields: [lessonId], references: [id])
-  date       DateTime
-  startTime  String
-  endTime    String
-  blockCount Int
-  isReview   Boolean  @default(false)
-  completed  Boolean  @default(false)
-  weekStart  DateTime
-}
-
-model DailyChecklist {
-  id           Int             @id @default(autoincrement())
-  userId       Int
-  user         User            @relation(fields: [userId], references: [id])
-  date         DateTime
-  stressLevel  Int             @default(3)
-  sleptWell   Boolean?
-  items        ChecklistItem[]
-}
-
-model ChecklistItem {
-  id              Int            @id @default(autoincrement())
-  checklistId     Int
-  checklist       DailyChecklist @relation(fields: [checklistId], references: [id])
-  lessonId        Int
-  plannedBlocks   Int
-  completedBlocks Int            @default(0)
-  delayed         Boolean        @default(false)
-}
-
-model WeeklyFeedback {
-  id               Int              @id @default(autoincrement())
-  userId           Int
-  user             User             @relation(fields: [userId], references: [id])
-  weekStart        DateTime
-  weekloadFeedback String
-  lessonFeedbacks  LessonFeedback[]
-}
-
-model LessonFeedback {
-  id               Int            @id @default(autoincrement())
-  weeklyFeedbackId Int
-  weeklyFeedback   WeeklyFeedback @relation(fields: [weeklyFeedbackId], references: [id])
-  lessonId         Int
-  needsMoreTime    Int
-}
-
-model SystemFeedbackLog {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id])
-  type        String
-  lessonId    Int?
-  triggeredAt DateTime @default(now())
-
-  @@index([userId, type, lessonId])
-}
-
-model LessonPlanOverride {
-  id                 Int      @id @default(autoincrement())
-  userId             Int
-  user               User     @relation(fields: [userId], references: [id])
-  lessonId           Int?
-  weekStart          DateTime
-  priorityBoost      Int      @default(0)
-  preferEarlySlot    Boolean  @default(false)
-  maxSessionBlocks   Int?
-  multiplierOverride Float?
-  addReviewBlock     Boolean  @default(false)
-  createdAt          DateTime @default(now())
-
-  @@unique([userId, lessonId, weekStart])
-  @@index([userId, weekStart])
-}
-
-
