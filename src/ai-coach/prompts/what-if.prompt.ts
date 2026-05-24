@@ -23,6 +23,11 @@ export interface WhatIfInput {
   focusLessonName?: string;
   focusLessonCompletion?: number; // 0–1
   focusLessonKeyfiDelayCount?: number;
+  // Past exam result for this lesson — 'ders_durumu' only
+  focusLessonLastExamResult?: {
+    satisfied: boolean;
+    failReason?: string | null;
+  } | null;
   // For 'gun_bos'
   emptyDayName?: string;
   emptyDayBlockCount?: number;
@@ -37,10 +42,20 @@ export interface WhatIfInput {
 
 const SCENARIO_LABELS: Record<WhatIfScenario, string> = {
   daha_fazla_calis: 'What happens if I study more?',
-  ders_durumu: 'Where do I stand in this lesson?',
-  calisma_tarzi: 'What study style suits me best?',
-  derse_odaklan: 'What if I focus more on one lesson?',
-  gun_bos: 'What if I can\'t study that day?',
+  ders_durumu:      'Where do I stand in this lesson?',
+  calisma_tarzi:    'What study style suits me best?',
+  derse_odaklan:    'What if I focus more on one lesson?',
+  gun_bos:          'What if I can\'t study that day?',
+};
+
+const FAIL_REASON_LABELS: Record<string, string> = {
+  insufficient_preparation: 'felt they didn\'t prepare enough',
+  poor_understanding:        'studied but the material didn\'t fully sink in',
+  exam_anxiety:              'felt anxious during the exam',
+  time_management_in_exam:   'ran out of time during the exam',
+  poor_sleep_before:         'had poor sleep the night before',
+  overwhelmed_by_workload:   'felt overwhelmed by the overall workload',
+  lack_of_focus:             'struggled to concentrate while studying',
 };
 
 export function buildWhatIfPrompt(input: WhatIfInput): string {
@@ -118,10 +133,19 @@ export function buildWhatIfPrompt(input: WhatIfInput): string {
       if (input.focusLessonName) {
         lines.push(`Focus lesson: ${input.focusLessonName}`);
         if (input.focusLessonCompletion !== undefined) {
-          lines.push(`Completion rate in this lesson: ${Math.round(input.focusLessonCompletion * 100)}%`);
+          lines.push(`Completion rate in this lesson (last 7 days): ${Math.round(input.focusLessonCompletion * 100)}%`);
         }
         if (input.focusLessonKeyfiDelayCount !== undefined && input.focusLessonKeyfiDelayCount > 0) {
           lines.push(`Times voluntarily delayed: ${input.focusLessonKeyfiDelayCount}`);
+        }
+        if (input.focusLessonLastExamResult) {
+          const r = input.focusLessonLastExamResult;
+          if (r.satisfied) {
+            lines.push('Most recent exam for this lesson: student was satisfied with the result.');
+          } else {
+            const reasonLabel = r.failReason ? (FAIL_REASON_LABELS[r.failReason] ?? r.failReason) : null;
+            lines.push(`Most recent exam for this lesson: student was not satisfied with the result${reasonLabel ? ` — ${reasonLabel}` : ''}.`);
+          }
         }
       }
       lines.push('Clearly explain where the student stands in this lesson and what they should do next.');

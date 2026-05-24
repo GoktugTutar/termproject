@@ -1,9 +1,3 @@
-/*
-  Warnings:
+ALTER TABLE "User" DROP COLUMN IF EXISTS "avatarOptions";
 
-  - The `avatarOptions` column on the `User` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-
-*/
--- AlterTable
-ALTER TABLE "User" DROP COLUMN "avatarOptions",
-ADD COLUMN     "avatarOptions" JSONB;
+ALTER TABLE "User" ADD COLUMN "avatarOptions" JSONB;

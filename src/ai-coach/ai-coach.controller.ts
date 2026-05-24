@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, ParseIntPipe, Post, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AiCoachService } from './ai-coach.service';
 import { WhatIfScenario } from './prompts/what-if.prompt';
@@ -42,5 +42,20 @@ export class AiCoachController {
   async dailyCoach(@Request() req: any) {
     const userId = req.user.id as number;
     return this.aiCoachService.getDailyCoachMessage(userId);
+  }
+
+  /**
+   * POST /ai-coach/exam-result/:id/coach-message
+   * Called after saving an ExamResult where satisfied=false and failReason is set.
+   * userId JWT'den alınır, examResultId URL'den alınır.
+   * Returns: { message: string }
+   */
+  @Post('exam-result/:id/coach-message')
+  async examResultCoach(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) examResultId: number,
+  ) {
+    const userId = req.user.id as number;
+    return this.aiCoachService.getExamResultCoachMessage(userId, examResultId);
   }
 }

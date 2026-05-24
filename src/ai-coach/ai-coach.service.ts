@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildWhatIfPrompt, WhatIfScenario } from './prompts/what-if.prompt';
 import { buildCoachPrompt } from './prompts/coach.prompt';
+import { buildExamResultPrompt } from './prompts/exam-result.prompt';
 import { getCurrentTime } from '../utils/time.util';
 
 const OPENROUTER_MODEL = 'baidu/cobuddy:free';
@@ -13,7 +14,6 @@ export class AiCoachService {
 
   // ── What-if ───────────────────────────────────────────────────────────────
 
-  /** Generates an AI response for the user's selected what-if scenario. Does not touch the planner. */
   async whatIfPreview(
     userId: number,
     scenario: WhatIfScenario,
@@ -49,10 +49,11 @@ export class AiCoachService {
         .filter((e) => e.daysLeft >= 0 && e.daysLeft <= 14),
     );
 
-    // Focus-lesson context — for 'ders_durumu' / 'derse_odaklan' scenarios
+    // Focus-lesson context
     let focusLessonName: string | undefined;
     let focusLessonCompletion: number | undefined;
     let focusLessonKeyfiDelayCount: number | undefined;
+    let focusLessonLastExamResult: { satisfied: boolean; failReason?: string | null } | null = null;
 
     if (focusLessonId) {
       const focusLesson = lessons.find((l) => l.id === focusLessonId);
@@ -60,19 +61,35 @@ export class AiCoachService {
         focusLessonName = focusLesson.name;
         focusLessonKeyfiDelayCount = focusLesson.keyfiDelayCount;
 
-        const recentItems = await this.prisma.checklistItem.findMany({
-          where: {
-            lessonId: focusLessonId,
-            checklist: {
-              userId,
-              date: { gte: new Date(now.getTime() - 7 * 86400000) },
+        const [recentItems, lastExamResult] = await Promise.all([
+          this.prisma.checklistItem.findMany({
+            where: {
+              lessonId: focusLessonId,
+              checklist: {
+                userId,
+                date: { gte: new Date(now.getTime() - 7 * 86400000) },
+              },
             },
-          },
-        });
+          }),
+          // Most recent exam result for this lesson
+          this.prisma.examResult.findFirst({
+            where: { userId, lessonId: focusLessonId },
+            orderBy: { createdAt: 'desc' },
+          }),
+        ]);
+
         const planned = recentItems.reduce((s, i) => s + i.plannedBlocks, 0);
         const completed = recentItems.reduce((s, i) => s + i.completedBlocks, 0);
         focusLessonCompletion = planned > 0 ? completed / planned : 0;
-        console.log(`[AC] odak ders: ${focusLessonName} completion=%${Math.round(focusLessonCompletion * 100)} delay=${focusLessonKeyfiDelayCount}`);
+
+        if (lastExamResult) {
+          focusLessonLastExamResult = {
+            satisfied: lastExamResult.satisfied ?? true,
+            failReason: lastExamResult.failReason ?? null,
+          };
+        }
+
+        console.log(`[AC] odak ders: ${focusLessonName} completion=%${Math.round(focusLessonCompletion * 100)} delay=${focusLessonKeyfiDelayCount} lastExam=${lastExamResult ? (lastExamResult.satisfied ? 'satisfied' : lastExamResult.failReason ?? 'unsatisfied') : 'none'}`);
       } else {
         console.warn(`[AC] focusLessonId=${focusLessonId} bulunamadı`);
       }
@@ -102,6 +119,7 @@ export class AiCoachService {
       focusLessonName,
       focusLessonCompletion,
       focusLessonKeyfiDelayCount,
+      focusLessonLastExamResult,
       emptyDayName,
       emptyDayBlockCount,
       sleepMetrics,
@@ -115,7 +133,6 @@ export class AiCoachService {
 
   // ── Daily coach ───────────────────────────────────────────────────────────
 
-  /** Generates a coaching message based on the student's daily situation. Does not touch the planner. */
   async getDailyCoachMessage(userId: number) {
     const now = getCurrentTime();
     const weekStart = this.getWeekStart(now);
@@ -146,7 +163,6 @@ export class AiCoachService {
         .filter((e) => e.daysLeft >= 0 && e.daysLeft <= 14),
     );
 
-    // This week's block summary — aggregate per lesson
     const blockMap = new Map<number, { lessonName: string; blockCount: number; isReview: boolean }>();
     for (const block of weekBlocks) {
       const existing = blockMap.get(block.lessonId);
@@ -197,9 +213,99 @@ export class AiCoachService {
     return { message };
   }
 
+  // ── Exam result coach ─────────────────────────────────────────────────────
+
+  /**
+   * Called after an ExamResult is saved with satisfied=false.
+   * Fetches prep data for that lesson in the weeks before the exam
+   * and generates a personalised coaching response.
+   */
+  async getExamResultCoachMessage(userId: number, examResultId: number): Promise<{ message: string }> {
+    const now = getCurrentTime();
+    console.log(`[AC] examResultCoach userId=${userId} examResultId=${examResultId}`);
+
+    const examResult = await this.prisma.examResult.findUnique({
+      where: { id: examResultId },
+      include: {
+        exam: true,
+        lesson: true,
+      },
+    });
+
+    if (!examResult || !examResult.failReason) {
+      console.warn(`[AC] examResult ${examResultId} not found or no failReason`);
+      return { message: '' };
+    }
+
+    const profile = await this.prisma.studentProfile.findUnique({ where: { userId } });
+
+    // Fetch prep data: checklists for this lesson in the 3 weeks before the exam
+    const examDate = new Date(examResult.exam.examDate);
+    const prepStart = new Date(examDate.getTime() - 21 * 86400000);
+
+    const prepChecklists = await this.prisma.dailyChecklist.findMany({
+      where: {
+        userId,
+        date: { gte: prepStart, lte: examDate },
+      },
+      include: { items: true },
+      orderBy: { date: 'asc' },
+    });
+
+    // Completion rate for this lesson during prep period
+    let prepPlanned = 0;
+    let prepCompleted = 0;
+    let prepDelayCount = 0;
+    for (const c of prepChecklists) {
+      for (const item of c.items) {
+        if (item.lessonId !== examResult.lessonId) continue;
+        prepPlanned += item.plannedBlocks;
+        prepCompleted += item.completedBlocks;
+        if (item.delayed) prepDelayCount++;
+      }
+    }
+    const prepCompletionRate = prepPlanned > 0 ? prepCompleted / prepPlanned : 0;
+
+    // Average stress during prep period
+    const prepAvgStress = prepChecklists.length > 0
+      ? prepChecklists.reduce((s, c) => s + c.stressLevel, 0) / prepChecklists.length
+      : 3;
+
+    // Sleep the night before the exam
+    const nightBefore = new Date(examDate);
+    nightBefore.setDate(nightBefore.getDate() - 1);
+    const nightBeforeStr = this.toLocalDateStr(nightBefore);
+    const nightBeforeChecklist = prepChecklists.find(
+      (c) => this.toLocalDateStr(new Date(c.date)) === nightBeforeStr,
+    );
+    const sleptWellBeforeExam = nightBeforeChecklist?.sleptWell ?? null;
+
+    console.log(`[AC] examResultCoach: lesson=${examResult.lesson.name} prepCompletion=%${Math.round(prepCompletionRate * 100)} prepStress=${prepAvgStress.toFixed(1)} prepDelays=${prepDelayCount} sleptWell=${sleptWellBeforeExam}`);
+
+    const prompt = buildExamResultPrompt({
+      lessonName: examResult.lesson.name,
+      difficulty: examResult.lesson.difficulty,
+      failReason: examResult.failReason,
+      prepCompletionRate,
+      prepAvgStress,
+      prepDelayCount,
+      sleptWellBeforeExam,
+      profile: profile
+        ? {
+            completionRate7d: profile.completionRate7d,
+            avgStress7d: profile.avgStress7d,
+            consistencyScore: profile.consistencyScore,
+            stressNearExam: profile.stressNearExam,
+          }
+        : null,
+    });
+
+    const message = await this.callAi(prompt, 'examResultCoach');
+    return { message };
+  }
+
   // ── OpenRouter call ───────────────────────────────────────────────────────
 
-  /** Makes an AI call via OpenRouter. The caller parameter appears in logs. */
   private async callAi(prompt: string, caller: string): Promise<string> {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -251,5 +357,12 @@ export class AiCoachService {
     d.setDate(d.getDate() + diff);
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+
+  private toLocalDateStr(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 }

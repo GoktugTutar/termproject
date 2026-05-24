@@ -29,6 +29,7 @@ model User {
   terms              Term[]
   busySlots          UserBusySlot[]
   weeklyFeedbacks    WeeklyFeedback[]
+  examResults    ExamResult[]
 }
 
 model StudentProfile {
@@ -88,6 +89,7 @@ model Lesson {
   deadlines           LessonDeadline[]
   exams               LessonExam[]
   scheduledBlocks     ScheduledBlock[]
+  examResults    ExamResult[]
 }
 
 model LessonExam {
@@ -95,6 +97,7 @@ model LessonExam {
   lessonId Int
   examDate DateTime
   lesson   Lesson   @relation(fields: [lessonId], references: [id])
+  results        ExamResult[]
 }
 
 model LessonDeadline {
@@ -196,4 +199,32 @@ enum StudyStyle {
   deep_focus
   distributed
   normal
+}
+
+model ExamResult {
+  id         Int             @id @default(autoincrement())
+  userId     Int
+  lessonId   Int
+  examId     Int
+  grade      String?
+  satisfied  Boolean?
+  failReason ExamFailReason?
+  createdAt  DateTime        @default(now())
+
+  user       User            @relation(fields: [userId], references: [id])
+  lesson     Lesson          @relation(fields: [lessonId], references: [id])
+  exam       LessonExam      @relation(fields: [examId], references: [id])
+
+  @@index([userId, lessonId])
+  @@index([userId, examId])
+}
+
+enum ExamFailReason {
+  insufficient_preparation
+  poor_understanding
+  exam_anxiety
+  time_management_in_exam
+  poor_sleep_before
+  overwhelmed_by_workload
+  lack_of_focus
 }
