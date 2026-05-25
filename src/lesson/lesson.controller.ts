@@ -1,9 +1,21 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ParseIntPipe, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { LessonService } from './lesson.service';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { AddExamDto } from './dto/add-exam.dto';
 import { AddDeadlineDto } from './dto/add-deadline.dto';
+import { SaveExamResultDto } from './dto/save-exam-result.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -56,7 +68,12 @@ export class LessonController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AddDeadlineDto,
   ) {
-    return this.lessonService.addDeadline(req.user.id, id, dto.deadlineDate, dto.title);
+    return this.lessonService.addDeadline(
+      req.user.id,
+      id,
+      dto.deadlineDate,
+      dto.title,
+    );
   }
 
   // Deadline sil
@@ -67,5 +84,25 @@ export class LessonController {
     @Param('deadlineId', ParseIntPipe) deadlineId: number,
   ) {
     return this.lessonService.removeDeadline(req.user.id, id, deadlineId);
+  }
+
+  // Sınav sonucunu kaydet/güncelle
+  @Post(':id/exam-result')
+  saveExamResult(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SaveExamResultDto,
+  ) {
+    return this.lessonService.saveExamResult(req.user.id, id, dto);
+  }
+
+  // Sınav sonucunu sil
+  @Delete(':id/exam-result/:examId')
+  removeExamResult(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('examId', ParseIntPipe) examId: number,
+  ) {
+    return this.lessonService.removeExamResult(req.user.id, id, examId);
   }
 }

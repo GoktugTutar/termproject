@@ -22,11 +22,16 @@ export class AiCoachService {
     emptyDayBlockCount?: number,
   ) {
     const now = getCurrentTime();
-    console.log(`[AC] whatIf userId=${userId} scenario=${scenario} focusLessonId=${focusLessonId ?? '-'} emptyDay=${emptyDayName ?? '-'}`);
+    console.log(
+      `[AC] whatIf userId=${userId} scenario=${scenario} focusLessonId=${focusLessonId ?? '-'} emptyDay=${emptyDayName ?? '-'}`,
+    );
 
     const [profile, lessons, weekBlocks, lastFeedback] = await Promise.all([
       this.prisma.studentProfile.findUnique({ where: { userId } }),
-      this.prisma.lesson.findMany({ where: { userId }, include: { exams: true } }),
+      this.prisma.lesson.findMany({
+        where: { userId },
+        include: { exams: true },
+      }),
       this.prisma.scheduledBlock.findMany({
         where: { userId, weekStart: this.getWeekStart(now) },
         include: { lesson: true },
@@ -37,13 +42,17 @@ export class AiCoachService {
       }),
     ]);
 
-    console.log(`[AC] veri: profile=${profile ? 'var' : 'yok'} lessons=${lessons.length} weekBlocks=${weekBlocks.length} lastFeedback=${lastFeedback?.weekloadFeedback ?? 'yok'}`);
+    console.log(
+      `[AC] veri: profile=${profile ? 'var' : 'yok'} lessons=${lessons.length} weekBlocks=${weekBlocks.length} lastFeedback=${lastFeedback?.weekloadFeedback ?? 'yok'}`,
+    );
 
     const upcomingExams = lessons.flatMap((lesson) =>
       lesson.exams
         .map((exam) => ({
           lessonName: lesson.name,
-          daysLeft: Math.ceil((new Date(exam.examDate).getTime() - now.getTime()) / 86400000),
+          daysLeft: Math.ceil(
+            (new Date(exam.examDate).getTime() - now.getTime()) / 86400000,
+          ),
           difficulty: lesson.difficulty,
         }))
         .filter((e) => e.daysLeft >= 0 && e.daysLeft <= 14),
@@ -53,7 +62,10 @@ export class AiCoachService {
     let focusLessonName: string | undefined;
     let focusLessonCompletion: number | undefined;
     let focusLessonKeyfiDelayCount: number | undefined;
-    let focusLessonLastExamResult: { satisfied: boolean; failReason?: string | null } | null = null;
+    let focusLessonLastExamResult: {
+      satisfied: boolean;
+      failReason?: string | null;
+    } | null = null;
 
     if (focusLessonId) {
       const focusLesson = lessons.find((l) => l.id === focusLessonId);
@@ -79,7 +91,10 @@ export class AiCoachService {
         ]);
 
         const planned = recentItems.reduce((s, i) => s + i.plannedBlocks, 0);
-        const completed = recentItems.reduce((s, i) => s + i.completedBlocks, 0);
+        const completed = recentItems.reduce(
+          (s, i) => s + i.completedBlocks,
+          0,
+        );
         focusLessonCompletion = planned > 0 ? completed / planned : 0;
 
         if (lastExamResult) {
@@ -89,20 +104,24 @@ export class AiCoachService {
           };
         }
 
-        console.log(`[AC] odak ders: ${focusLessonName} completion=%${Math.round(focusLessonCompletion * 100)} delay=${focusLessonKeyfiDelayCount} lastExam=${lastExamResult ? (lastExamResult.satisfied ? 'satisfied' : lastExamResult.failReason ?? 'unsatisfied') : 'none'}`);
+        console.log(
+          `[AC] odak ders: ${focusLessonName} completion=%${Math.round(focusLessonCompletion * 100)} delay=${focusLessonKeyfiDelayCount} lastExam=${lastExamResult ? (lastExamResult.satisfied ? 'satisfied' : (lastExamResult.failReason ?? 'unsatisfied')) : 'none'}`,
+        );
       } else {
         console.warn(`[AC] focusLessonId=${focusLessonId} bulunamadı`);
       }
     }
 
-    const sleepMetrics = (profile?.goodSleepCompletionRate !== null && profile?.goodSleepCompletionRate !== undefined)
-      ? {
-          goodSleepCompletionRate: profile.goodSleepCompletionRate,
-          badSleepCompletionRate: profile.badSleepCompletionRate ?? null,
-          goodSleepAvgStress: profile.goodSleepAvgStress ?? null,
-          badSleepAvgStress: profile.badSleepAvgStress ?? null,
-        }
-      : null;
+    const sleepMetrics =
+      profile?.goodSleepCompletionRate !== null &&
+      profile?.goodSleepCompletionRate !== undefined
+        ? {
+            goodSleepCompletionRate: profile.goodSleepCompletionRate,
+            badSleepCompletionRate: profile.badSleepCompletionRate ?? null,
+            goodSleepAvgStress: profile.goodSleepAvgStress ?? null,
+            badSleepAvgStress: profile.badSleepAvgStress ?? null,
+          }
+        : null;
 
     const prompt = buildWhatIfPrompt({
       scenario,
@@ -125,7 +144,9 @@ export class AiCoachService {
       sleepMetrics,
     });
 
-    console.log(`[AC] prompt hazır: ${prompt.split('\n').length} satır, upcomingExams=${upcomingExams.length}`);
+    console.log(
+      `[AC] prompt hazır: ${prompt.split('\n').length} satır, upcomingExams=${upcomingExams.length}`,
+    );
 
     const message = await this.callAi(prompt, 'whatIf');
     return { scenario, message };
@@ -140,7 +161,10 @@ export class AiCoachService {
 
     const [profile, lessons, weekBlocks, lastFeedback] = await Promise.all([
       this.prisma.studentProfile.findUnique({ where: { userId } }),
-      this.prisma.lesson.findMany({ where: { userId }, include: { exams: true } }),
+      this.prisma.lesson.findMany({
+        where: { userId },
+        include: { exams: true },
+      }),
       this.prisma.scheduledBlock.findMany({
         where: { userId, weekStart },
         include: { lesson: true },
@@ -151,19 +175,26 @@ export class AiCoachService {
       }),
     ]);
 
-    console.log(`[AC] veri: profile=${profile ? 'var' : 'yok'} lessons=${lessons.length} weekBlocks=${weekBlocks.length} lastFeedback=${lastFeedback?.weekloadFeedback ?? 'yok'}`);
+    console.log(
+      `[AC] veri: profile=${profile ? 'var' : 'yok'} lessons=${lessons.length} weekBlocks=${weekBlocks.length} lastFeedback=${lastFeedback?.weekloadFeedback ?? 'yok'}`,
+    );
 
     const upcomingExams = lessons.flatMap((lesson) =>
       lesson.exams
         .map((exam) => ({
           lessonName: lesson.name,
-          daysLeft: Math.ceil((new Date(exam.examDate).getTime() - now.getTime()) / 86400000),
+          daysLeft: Math.ceil(
+            (new Date(exam.examDate).getTime() - now.getTime()) / 86400000,
+          ),
           difficulty: lesson.difficulty,
         }))
         .filter((e) => e.daysLeft >= 0 && e.daysLeft <= 14),
     );
 
-    const blockMap = new Map<number, { lessonName: string; blockCount: number; isReview: boolean }>();
+    const blockMap = new Map<
+      number,
+      { lessonName: string; blockCount: number; isReview: boolean }
+    >();
     for (const block of weekBlocks) {
       const existing = blockMap.get(block.lessonId);
       if (existing) {
@@ -181,16 +212,20 @@ export class AiCoachService {
       .filter((l) => l.keyfiDelayCount >= 2)
       .map((l) => ({ lessonName: l.name, delayCount: l.keyfiDelayCount }));
 
-    console.log(`[AC] upcomingExams=${upcomingExams.length} delayedLessons=${delayedLessons.length} thisWeekBlocks=${blockMap.size}`);
+    console.log(
+      `[AC] upcomingExams=${upcomingExams.length} delayedLessons=${delayedLessons.length} thisWeekBlocks=${blockMap.size}`,
+    );
 
-    const sleepMetrics = (profile?.goodSleepCompletionRate !== null && profile?.goodSleepCompletionRate !== undefined)
-      ? {
-          goodSleepCompletionRate: profile.goodSleepCompletionRate,
-          badSleepCompletionRate: profile.badSleepCompletionRate ?? null,
-          goodSleepAvgStress: profile.goodSleepAvgStress ?? null,
-          badSleepAvgStress: profile.badSleepAvgStress ?? null,
-        }
-      : null;
+    const sleepMetrics =
+      profile?.goodSleepCompletionRate !== null &&
+      profile?.goodSleepCompletionRate !== undefined
+        ? {
+            goodSleepCompletionRate: profile.goodSleepCompletionRate,
+            badSleepCompletionRate: profile.badSleepCompletionRate ?? null,
+            goodSleepAvgStress: profile.goodSleepAvgStress ?? null,
+            badSleepAvgStress: profile.badSleepAvgStress ?? null,
+          }
+        : null;
 
     const prompt = buildCoachPrompt({
       profile: profile
@@ -220,9 +255,14 @@ export class AiCoachService {
    * Fetches prep data for that lesson in the weeks before the exam
    * and generates a personalised coaching response.
    */
-  async getExamResultCoachMessage(userId: number, examResultId: number): Promise<{ message: string }> {
+  async getExamResultCoachMessage(
+    userId: number,
+    examResultId: number,
+  ): Promise<{ message: string }> {
     const now = getCurrentTime();
-    console.log(`[AC] examResultCoach userId=${userId} examResultId=${examResultId}`);
+    console.log(
+      `[AC] examResultCoach userId=${userId} examResultId=${examResultId}`,
+    );
 
     const examResult = await this.prisma.examResult.findUnique({
       where: { id: examResultId },
@@ -232,12 +272,16 @@ export class AiCoachService {
       },
     });
 
-    if (!examResult || !examResult.failReason) {
-      console.warn(`[AC] examResult ${examResultId} not found or no failReason`);
+    if (!examResult || examResult.userId !== userId || !examResult.failReason) {
+      console.warn(
+        `[AC] examResult ${examResultId} not found or no failReason`,
+      );
       return { message: '' };
     }
 
-    const profile = await this.prisma.studentProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.studentProfile.findUnique({
+      where: { userId },
+    });
 
     // Fetch prep data: checklists for this lesson in the 3 weeks before the exam
     const examDate = new Date(examResult.exam.examDate);
@@ -264,12 +308,15 @@ export class AiCoachService {
         if (item.delayed) prepDelayCount++;
       }
     }
-    const prepCompletionRate = prepPlanned > 0 ? prepCompleted / prepPlanned : 0;
+    const prepCompletionRate =
+      prepPlanned > 0 ? prepCompleted / prepPlanned : 0;
 
     // Average stress during prep period
-    const prepAvgStress = prepChecklists.length > 0
-      ? prepChecklists.reduce((s, c) => s + c.stressLevel, 0) / prepChecklists.length
-      : 3;
+    const prepAvgStress =
+      prepChecklists.length > 0
+        ? prepChecklists.reduce((s, c) => s + c.stressLevel, 0) /
+          prepChecklists.length
+        : 3;
 
     // Sleep the night before the exam
     const nightBefore = new Date(examDate);
@@ -280,7 +327,9 @@ export class AiCoachService {
     );
     const sleptWellBeforeExam = nightBeforeChecklist?.sleptWell ?? null;
 
-    console.log(`[AC] examResultCoach: lesson=${examResult.lesson.name} prepCompletion=%${Math.round(prepCompletionRate * 100)} prepStress=${prepAvgStress.toFixed(1)} prepDelays=${prepDelayCount} sleptWell=${sleptWellBeforeExam}`);
+    console.log(
+      `[AC] examResultCoach: lesson=${examResult.lesson.name} prepCompletion=%${Math.round(prepCompletionRate * 100)} prepStress=${prepAvgStress.toFixed(1)} prepDelays=${prepDelayCount} sleptWell=${sleptWellBeforeExam}`,
+    );
 
     const prompt = buildExamResultPrompt({
       lessonName: examResult.lesson.name,
@@ -300,8 +349,50 @@ export class AiCoachService {
         : null,
     });
 
-    const message = await this.callAi(prompt, 'examResultCoach');
+    const message =
+      (await this.callAi(prompt, 'examResultCoach')) ||
+      this.buildExamResultFallbackMessage({
+        lessonName: examResult.lesson.name,
+        failReason: examResult.failReason,
+        prepCompletionRate,
+        prepAvgStress,
+        prepDelayCount,
+        sleptWellBeforeExam,
+      });
     return { message };
+  }
+
+  private buildExamResultFallbackMessage(input: {
+    lessonName: string;
+    failReason: string;
+    prepCompletionRate: number;
+    prepAvgStress: number;
+    prepDelayCount: number;
+    sleptWellBeforeExam: boolean | null;
+  }): string {
+    const completion = Math.round(input.prepCompletionRate * 100);
+    if (
+      input.failReason === 'poor_sleep_before' ||
+      input.sleptWellBeforeExam === false
+    ) {
+      return `${input.lessonName} için sonucu etkileyen ana sinyal uyku görünüyor. Bir sonraki sınavda son geceyi toparlamak, hazırlığın kadar performansını da korumana yardımcı olur.`;
+    }
+    if (input.failReason === 'exam_anxiety' || input.prepAvgStress >= 4) {
+      return `${input.lessonName} için hazırlık kadar sınav anındaki stres de belirleyici olmuş olabilir. Bir sonraki sefer hedefin sadece daha çok çalışmak değil, sınav öncesi baskıyı daha yönetilebilir tutmak olsun.`;
+    }
+    if (input.failReason === 'time_management_in_exam') {
+      return `${input.lessonName} için konu bilgisiyle birlikte sınav içi tempo da önemli görünüyor. Bir sonraki sınavda soruları önceliklendirme ve süreyi bölme pratiği sonucu iyileştirebilir.`;
+    }
+    if (input.failReason === 'lack_of_focus' || input.prepDelayCount > 0) {
+      return `${input.lessonName} hazırlığında odak ve süreklilik zorlamış olabilir. Kısa ama bölünmeyen çalışma anları, bir sonraki sınavda tamamladığın emeğin daha net karşılık bulmasına yardım eder.`;
+    }
+    if (input.failReason === 'poor_understanding') {
+      return `${input.lessonName} için sorun sadece süre değil, konunun oturma biçimi olabilir. Bir sonraki hazırlıkta yanlış yaptığın başlıkları erken fark etmek ve temel kavramları tekrar kurmak daha iyi sonuç verir.`;
+    }
+    if (input.failReason === 'overwhelmed_by_workload') {
+      return `${input.lessonName} sonucu genel yükten etkilenmiş olabilir. Sistem bu bilgiyi sonraki planlarda yük dengesini yorumlamak için kullanacak.`;
+    }
+    return `${input.lessonName} için hazırlık tamamlama oranın yaklaşık %${completion}. Bu sonucu bir veri noktası olarak kullanıp sonraki sınavda hangi çalışma biçiminin daha iyi işlediğini daha net görebiliriz.`;
   }
 
   // ── OpenRouter call ───────────────────────────────────────────────────────
@@ -331,7 +422,10 @@ export class AiCoachService {
       console.log(`[AC] OpenRouter status=${response.status} caller=${caller}`);
 
       if (response.status !== 200) {
-        console.error(`[AC] OpenRouter hata yanıtı:`, JSON.stringify(data).substring(0, 200));
+        console.error(
+          `[AC] OpenRouter hata yanıtı:`,
+          JSON.stringify(data).substring(0, 200),
+        );
         return '';
       }
 
