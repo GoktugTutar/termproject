@@ -54,8 +54,22 @@ export class UserService {
   }
 
   async setup(userId: number, dto: SetupUserDto) {
-    const { busySlots, ...rest } = dto;
-    await this.prisma.user.update({ where: { id: userId }, data: rest });
+    const { busySlots, academicTerm, ...rest } = dto;
+
+    // User alanlarını güncelle (gradeLevel, gpa, academicTerm, studyPrefs dahil)
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { ...rest, ...(academicTerm !== undefined ? { academicTerm } : {}) },
+    });
+
+    // academicTerm varsa aktif dönemin adını da güncelle
+    if (academicTerm) {
+      await this.prisma.term.updateMany({
+        where: { userId, isActive: true },
+        data: { name: academicTerm },
+      });
+    }
+
     if (busySlots !== undefined) {
       await this.prisma.userBusySlot.deleteMany({ where: { userId } });
       if (busySlots.length > 0) {

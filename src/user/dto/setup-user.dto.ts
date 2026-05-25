@@ -5,6 +5,7 @@ import {
   IsArray,
   ValidateNested,
   IsInt,
+  IsNumber,
   IsString,
   Min,
   Max,
@@ -50,6 +51,25 @@ export class SetupUserDto {
   @IsOptional()
   @IsEnum(StudyStyle)
   studyStyle?: StudyStyle;
+
+  /** Öğrencinin sınıfı (1–8). Onboarding adım 0'da girilir. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(8)
+  gradeLevel?: number;
+
+  /** Öğrencinin GPA'sı (0–4). Onboarding adım 0'da girilir. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(4)
+  gpa?: number;
+
+  /** Dönem adı (ör. "2026 Bahar"). User.academicTerm ve aktif Term.name'e yazılır. */
+  @IsOptional()
+  @IsString()
+  academicTerm?: string;
 
   @IsOptional()
   @IsArray()
