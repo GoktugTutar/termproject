@@ -144,14 +144,22 @@ export class ChecklistService {
         });
 
         const delayed = item.completedBlocks < item.plannedBlocks;
-        const delayDelta = existing
-          ? delayed === existing.delayed ? 0 : delayed ? 1 : -1
-          : delayed ? 1 : 0;
+        // Review bloğu için delay sayacını değiştirme
+        const delayDelta = (item.isReview)
+          ? 0
+          : existing
+            ? delayed === existing.delayed ? 0 : delayed ? 1 : -1
+            : delayed ? 1 : 0;
 
         if (existing) {
           await this.prisma.checklistItem.update({
             where: { id: existing.id },
-            data: { plannedBlocks: item.plannedBlocks, completedBlocks: item.completedBlocks, delayed },
+            data: {
+              plannedBlocks: item.plannedBlocks,
+              completedBlocks: item.completedBlocks,
+              delayed,
+              isReview: item.isReview ?? false,
+            },
           });
         } else {
           await this.prisma.checklistItem.create({
@@ -161,6 +169,7 @@ export class ChecklistService {
               plannedBlocks: item.plannedBlocks,
               completedBlocks: item.completedBlocks,
               delayed,
+              isReview: item.isReview ?? false,
             },
           });
         }

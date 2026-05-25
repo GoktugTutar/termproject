@@ -25,6 +25,10 @@ export class ChecklistItemDto {
   @IsOptional()
   @IsBoolean()
   delayed?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isReview?: boolean; // tekrar bloğu ise true
 }
 
 export class SubmitChecklistDto {
@@ -36,6 +40,15 @@ export class SubmitChecklistDto {
   @Min(1)
   @Max(5)
   stressLevel: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  fatigueLevel: number;
+
+  @IsOptional()
+  @IsBoolean()
+  sleptWell?: boolean; // frontend hazır olunca doldurulur
 
   @IsArray()
   @ValidateNested({ each: true })

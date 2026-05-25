@@ -136,13 +136,13 @@ model DailyChecklist {
 model ChecklistItem {
   id              Int            @id @default(autoincrement())
   checklistId     Int
+  checklist       DailyChecklist @relation(fields: [checklistId], references: [id])
   lessonId        Int
   plannedBlocks   Int
   completedBlocks Int            @default(0)
   delayed         Boolean        @default(false)
-  checklist       DailyChecklist @relation(fields: [checklistId], references: [id])
+  isReview        Boolean        @default(false) // tekrar bloğu mu?
 }
-
 model WeeklyFeedback {
   id               Int              @id @default(autoincrement())
   userId           Int

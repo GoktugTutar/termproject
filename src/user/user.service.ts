@@ -110,6 +110,8 @@ export class UserService {
     let totalPlanned = 0, totalCompleted = 0;
     for (const c of recent7) {
       for (const item of c.items) {
+        // Review bloğu da normal blok gibi hesaplanır —
+        // haftalık tahsisten kesildiği için planın bir parçası
         totalPlanned += item.plannedBlocks;
         totalCompleted += item.completedBlocks;
       }
