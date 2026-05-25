@@ -14,7 +14,7 @@ model User {
   passwordHash       String
   preferredStudyTime StudyTime            @default(morning)
   studyStyle         StudyStyle           @default(normal)
-  firstWeekStartedAt DateTime?            @default(now())
+  currentTermStartedAt DateTime?           @default(now())
   gradeLevel         Int?
   gpa                Float?
   academicTerm       String?

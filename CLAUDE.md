@@ -127,7 +127,7 @@ model User {
   id                 Int              @id @default(autoincrement())
   email              String           @unique
   passwordHash       String
-  firstWeekStartedAt DateTime?        @default(now())
+  currentTermStartedAt DateTime?       @default(now())
   preferredStudyTime StudyTime        @default(morning)
   studyStyle         StudyStyle       @default(normal)
   busySlots          UserBusySlot[]
@@ -342,8 +342,9 @@ model LessonFeedback {
 
 ### First Week Onboarding
 
-- İlk hafta, `User.firstWeekStartedAt` tarihinin bulunduğu Pazartesi-Pazar haftasıdır.
-- `firstWeekStartedAt = null` olan eski kullanıcılar ilk hafta moduna alınmaz.
+- İlk hafta, `User.currentTermStartedAt` tarihinin bulunduğu Pazartesi-Pazar haftasıdır.
+- `currentTermStartedAt = null` olan eski kullanıcılar ilk hafta moduna alınmaz.
+- `startTerm` çağrıldığında (yeni kayıt onboarding'i + profil'den yeni dönem) `currentTermStartedAt` her seferinde `now()` ile güncellenir; böylece her yeni dönem başlangıcında ilk hafta koruması aktif olur.
 - İlk haftada plan üretimi için en az 1 ders ve en az 1 busy time gerekir.
 - Kullanıcı hafta ortasında kayıt olduysa ilk hafta planı sadece bugünden Pazar gününe kadar oluşturulur; geçmiş günlere blok yazılmaz.
 - İlk hafta `GET /checklist/status/:date` şu davranışı verir: `blocked=false`, `missingDates=[]`, `checklist=null`, `checklistDisabled=true`, `disabledReason="first_week"`.

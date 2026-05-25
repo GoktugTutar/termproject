@@ -7,13 +7,16 @@ export function getLocalWeekStart(date: Date): Date {
   return d;
 }
 
+/** Verilen `date`'in, dönem başlangıcı (`currentTermStartedAt`) ile aynı takvim
+ *  haftasında (Pzt–Paz) olup olmadığını döner.
+ *  `currentTermStartedAt` null/undefined ise false döner → koruma devreye girmez. */
 export function isFirstWeekDate(
-  firstWeekStartedAt: Date | null | undefined,
+  currentTermStartedAt: Date | null | undefined,
   date: Date,
 ): boolean {
-  if (!firstWeekStartedAt) return false;
+  if (!currentTermStartedAt) return false;
   return (
-    getLocalWeekStart(firstWeekStartedAt).getTime() ===
+    getLocalWeekStart(currentTermStartedAt).getTime() ===
     getLocalWeekStart(date).getTime()
   );
 }

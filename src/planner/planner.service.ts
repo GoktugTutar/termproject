@@ -157,9 +157,15 @@ export class PlannerService {
       const dayBusySlots = user.busySlots.filter((s) => this.busySlotAppliesToDate(s, date, dayOfWeek));
       return { date, dayOfWeek, busySlots: dayBusySlots };
     });
-    const planningDays = partialStart
-      ? weekDays.filter((day) => day.date.getTime() >= partialStart.getTime())
-      : weekDays;
+    // Geçmiş günlere blok yazılmaz: her zaman en erken bugün'den başla.
+    // partialStart verilmişse onunla bugünün maksimumunu kullan.
+    const todayStart = this.startOfLocalDay(now);
+    const effectiveStart = partialStart
+      ? new Date(Math.max(partialStart.getTime(), todayStart.getTime()))
+      : todayStart;
+    const planningDays = weekDays.filter(
+      (day) => day.date.getTime() >= effectiveStart.getTime(),
+    );
 
     // Hafta öncesi Cmt/Paz için review penceresi: weekStart − 2 gün (arkadaşın fix'i)
     const reviewWindowStart = new Date(weekStart);
@@ -220,7 +226,7 @@ export class PlannerService {
     }
 
     // Hafta öncesi Cmt/Paz günlerini sadece review yerleştirme için freeWindows'a ekle (arkadaşın fix'i)
-    const todayStart = this.startOfLocalDay(now);
+    // todayStart yukarıda tanımlı
     for (let offset = -2; offset < 0; offset++) {
       const preDate = new Date(weekStart);
       preDate.setDate(preDate.getDate() + offset);

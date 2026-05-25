@@ -114,9 +114,9 @@ export class ChecklistService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { firstWeekStartedAt: true },
+      select: { currentTermStartedAt: true },
     });
-    if (isFirstWeekDate(user?.firstWeekStartedAt, today)) {
+    if (isFirstWeekDate(user?.currentTermStartedAt, today)) {
       throw new BadRequestException('İlk hafta checklist kapalı.');
     }
 
@@ -218,10 +218,10 @@ export class ChecklistService {
     // Kullanıcıyı çek
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { firstWeekStartedAt: true },
+      select: { currentTermStartedAt: true },
     });
 
-    if (isFirstWeekDate(user?.firstWeekStartedAt, date)) {
+    if (isFirstWeekDate(user?.currentTermStartedAt, date)) {
       return {
         date: this.toLocalDateStr(date),
         blocked: false,

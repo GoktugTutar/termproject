@@ -6,20 +6,20 @@ describe('isFirstWeekDate', () => {
   });
 
   it('returns true for dates in the registration Monday-Sunday week', () => {
-    const firstWeekStartedAt = new Date(2026, 4, 21); // Thursday
+    const currentTermStartedAt = new Date(2026, 4, 21); // Thursday
 
-    expect(isFirstWeekDate(firstWeekStartedAt, new Date(2026, 4, 18))).toBe(
+    expect(isFirstWeekDate(currentTermStartedAt, new Date(2026, 4, 18))).toBe(
       true,
     );
-    expect(isFirstWeekDate(firstWeekStartedAt, new Date(2026, 4, 24))).toBe(
+    expect(isFirstWeekDate(currentTermStartedAt, new Date(2026, 4, 24))).toBe(
       true,
     );
   });
 
   it('returns false for dates outside the registration week', () => {
-    const firstWeekStartedAt = new Date(2026, 4, 21);
+    const currentTermStartedAt = new Date(2026, 4, 21);
 
-    expect(isFirstWeekDate(firstWeekStartedAt, new Date(2026, 4, 25))).toBe(
+    expect(isFirstWeekDate(currentTermStartedAt, new Date(2026, 4, 25))).toBe(
       false,
     );
   });

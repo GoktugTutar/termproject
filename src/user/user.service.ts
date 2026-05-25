@@ -240,10 +240,18 @@ export class UserService {
     return { ok: true };
   }
 
+  /** Aktif dönemi kapatır, yeni dönem açar ve currentTermStartedAt'i sıfırlar.
+   *  Her dönem başlangıcında (onboarding + profil) çağrılır; böylece ilk hafta
+   *  checklist koruması her yeni dönem için çalışır. */
   async startTerm(userId: number, name?: string): Promise<object> {
+    const now = getCurrentTime();
     await this.prisma.term.updateMany({
       where: { userId, isActive: true },
-      data: { isActive: false, endedAt: getCurrentTime() },
+      data: { isActive: false, endedAt: now },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { currentTermStartedAt: now },
     });
     return this.prisma.term.create({
       data: { userId, name: name ?? null, isActive: true },

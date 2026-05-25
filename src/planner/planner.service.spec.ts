@@ -65,7 +65,7 @@ describe('PlannerService', () => {
     const prisma = createPrismaMock();
     prisma.user.findUnique.mockResolvedValue({
       ...createUser(),
-      firstWeekStartedAt: new Date(2026, 4, 21),
+      currentTermStartedAt: new Date(2026, 4, 21),
     });
     prisma.scheduledBlock.findMany.mockResolvedValue([]);
 
