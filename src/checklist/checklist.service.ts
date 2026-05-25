@@ -212,6 +212,10 @@ export class ChecklistService {
 
   async getStatus(userId: number, dateStr: string) {
     const date = this.parseLocalDate(dateStr);
+    const weekStart = this.getWeekStart(date);
+    const tomorrow = this.nextLocalDay(date);
+
+    // Kullanıcıyı çek
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { firstWeekStartedAt: true },
@@ -229,13 +233,28 @@ export class ChecklistService {
       };
     }
 
-    const weekStart = this.getWeekStart(date);
-    const missingDates: string[] = [];
+    // Haftalık blok ve checklist verilerini iki sorguda çek (N+1 yerine)
+    const [weekBlocks, weekChecklists] = await Promise.all([
+      this.prisma.scheduledBlock.findMany({
+        where: { userId, weekStart, date: { lt: date } },
+        select: { date: true },
+      }),
+      this.prisma.dailyChecklist.findMany({
+        where: { userId, date: { gte: weekStart, lt: tomorrow } },
+        include: { items: true },
+      }),
+    ]);
 
+    // Tarih → varlık map'i oluştur (bellekte karşılaştırma)
+    const datesWithBlocks = new Set(weekBlocks.map(b => this.toLocalDateStr(b.date)));
+    const checklistByDate = new Map(weekChecklists.map(c => [this.toLocalDateStr(c.date), c]));
+
+    // Pazartesi'den bugüne eksik checklistleri bul
+    const missingDates: string[] = [];
     for (let cursor = new Date(weekStart); cursor < date; cursor = this.nextLocalDay(cursor)) {
-      const hasBlocks = await this.hasScheduledBlocksForDate(userId, cursor);
-      if (hasBlocks && !(await this.hasChecklistForDate(userId, cursor))) {
-        missingDates.push(this.toLocalDateStr(cursor));
+      const key = this.toLocalDateStr(cursor);
+      if (datesWithBlocks.has(key) && !checklistByDate.has(key)) {
+        missingDates.push(key);
       }
     }
 
@@ -243,7 +262,7 @@ export class ChecklistService {
       date: this.toLocalDateStr(date),
       blocked: missingDates.length > 0,
       missingDates,
-      checklist: await this.getByDate(userId, this.toLocalDateStr(date)),
+      checklist: checklistByDate.get(this.toLocalDateStr(date)) ?? null,
       checklistDisabled: false,
     };
   }
