@@ -79,7 +79,7 @@ export function buildConstraintConfig(
 
       case 'study_start_hour': {
         const hour = Number(params.hour);
-        if (!Number.isNaN(hour) && hour >= 0 && hour <= 12) {
+        if (!Number.isNaN(hour) && hour >= 0 && hour <= 22) {
           config.studyStartHour = hour;
         }
         break;
