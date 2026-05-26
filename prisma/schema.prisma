@@ -31,6 +31,7 @@ model User {
   weeklyFeedbacks    WeeklyFeedback[]
   examResults    ExamResult[]
   constraints        UserConstraint[]
+  insightAnswers     InsightAnswer[]
 }
 
 model StudentProfile {
@@ -245,4 +246,16 @@ enum ExamFailReason {
   poor_sleep_before
   overwhelmed_by_workload
   lack_of_focus
+}
+
+model InsightAnswer {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id])
+  questionType String
+  lessonId     Int?
+  answer       String
+  createdAt    DateTime @default(now())
+
+  @@index([userId, questionType])
 }

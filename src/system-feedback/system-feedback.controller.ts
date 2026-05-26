@@ -1,8 +1,21 @@
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { IsString, IsOptional, IsInt } from 'class-validator';
 import { SystemFeedbackService } from './system-feedback.service';
 import { PlannerService } from '../planner/planner.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiBearerAuth } from '@nestjs/swagger';
+
+class SaveInsightAnswerDto {
+  @IsString()
+  questionType: string;
+
+  @IsString()
+  answer: string;
+
+  @IsOptional()
+  @IsInt()
+  lessonId?: number;
+}
 
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -14,7 +27,6 @@ export class SystemFeedbackController {
   ) {}
 
   // Sistemin kullanıcıya ürettiği AI destekli haftalık mesajı getir
-  // Override yazıldıysa planı anında yeniden oluştur
   @Get('message')
   async getMessages(@Request() req) {
     const result = await this.systemFeedbackService.getMessages(req.user.id);
@@ -26,5 +38,16 @@ export class SystemFeedbackController {
     }
 
     return result;
+  }
+
+  // Kullanıcının insight sorusuna verdiği cevabı kaydet
+  @Post('insight-answer')
+  saveInsightAnswer(@Request() req, @Body() dto: SaveInsightAnswerDto) {
+    return this.systemFeedbackService.saveInsightAnswer(
+      req.user.id,
+      dto.questionType,
+      dto.answer,
+      dto.lessonId,
+    );
   }
 }

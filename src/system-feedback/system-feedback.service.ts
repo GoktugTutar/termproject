@@ -546,7 +546,8 @@ export class SystemFeedbackService {
     }
     console.log(`[SF] SONUC: ${messages.length} mesaj → [${messages.map((m) => m.type).join(', ')}]`);
 
-    const aiMessage = await this.buildAiMessage(messages, profile, lastFeedback?.weekloadFeedback ?? null);
+    const insightAnswers = await this.getRecentInsightAnswers(userId);
+    const aiMessage = await this.buildAiMessage(messages, profile, lastFeedback?.weekloadFeedback ?? null, insightAnswers);
     const examResultMessage = this.buildExamResultReminderMessage(examResultReminderLessons);
     console.log(`[SF] AI: ${aiMessage ? 'uretildi' : 'bos'}`);
     return { messages, aiMessage, examResultMessage, overridesWritten };
@@ -656,6 +657,7 @@ export class SystemFeedbackService {
     messages: Array<{ type: string; message: string; suggestion: string }>,
     profile: { completionRate7d: number; avgStress7d: number; consistencyScore: number } | null,
     lastWeekloadFeedback?: string | null,
+    insightAnswers?: Array<{ questionType: string; answer: string; lessonId?: number | null }>,
   ): Promise<string> {
     if (messages.length === 0) return '';
 
@@ -665,6 +667,7 @@ export class SystemFeedbackService {
       lastWeekloadFeedback: (lastWeekloadFeedback as any) ?? null,
       burnoutDetected: false,
       programZorlastu: false,
+      insightAnswers: insightAnswers ?? [],
     });
     if (!prompt) return '';
 
@@ -696,6 +699,30 @@ export class SystemFeedbackService {
       console.error('[SF] OpenRouter hatasi:', err);
       return '';
     }
+  }
+
+  // Insight sorusuna verilen cevabı kaydet
+  async saveInsightAnswer(
+    userId: number,
+    questionType: string,
+    answer: string,
+    lessonId?: number,
+  ): Promise<void> {
+    await this.prisma.insightAnswer.create({
+      data: { userId, questionType, answer, lessonId: lessonId ?? null },
+    });
+    console.log(`[SF] insight cevap kaydedildi: userId=${userId} type=${questionType} answer="${answer}"`);
+  }
+
+  // Son insight cevaplarını getir — AI prompt'a eklemek için
+  async getRecentInsightAnswers(userId: number): Promise<Array<{ questionType: string; answer: string; lessonId?: number | null }>> {
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    return this.prisma.insightAnswer.findMany({
+      where: { userId, createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { questionType: true, answer: true, lessonId: true },
+    });
   }
 
   private daysUntilExam(lesson: { exams: Array<{ examDate: Date }> }, now: Date): number | null {

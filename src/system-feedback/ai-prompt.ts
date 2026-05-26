@@ -18,6 +18,9 @@ export interface SystemFeedbackContext {
   // Last week's overall workload self-assessment
   lastWeekloadFeedback: 'cok_yogundu' | 'tam_uygundu' | 'yetersizdi' | null;
 
+  // Recent insight answers from the student (last 14 days)
+  insightAnswers?: Array<{ questionType: string; answer: string; lessonId?: number | null }>;
+
   // Live context from the planner
   burnoutDetected: boolean;
   programZorlastu: boolean;
@@ -42,10 +45,33 @@ export function buildSystemFeedbackPrompt(context: SystemFeedbackContext): strin
   lines.push('');
 
   for (const msg of context.triggeredMessages) {
-    lines.push(`- [${msg.type}] ${msg.message} → Suggestion: ${msg.suggestion}`);
+    const conf = (msg as any).confidence !== undefined
+      ? ` [confidence: ${Math.round((msg as any).confidence * 100)}%]`
+      : '';
+    lines.push(`- [${msg.type}${conf}] ${msg.message} → Suggestion: ${msg.suggestion}`);
   }
 
   lines.push('');
+
+  // ── Conflict detection ────────────────────────────────────────────────────
+  const types = context.triggeredMessages.map(m => m.type);
+  const conflicts: string[] = [];
+
+  if (types.includes('asiri_yuk') && types.includes('sure_isteme_ama_tamamlayamama')) {
+    conflicts.push('CONFLICT: The student feels overloaded but also wants more time for a lesson. Address this contradiction — adding more time to an already heavy schedule may not help.');
+  }
+  if (types.includes('sinav_az_calisma') && types.includes('program_yogunlugu_dusuk')) {
+    conflicts.push('CONFLICT: A lesson is under-studied before its exam, yet next week looks lighter. Mention the lighter week as an opportunity to catch up.');
+  }
+  if (types.includes('yuksek_stres') && types.includes('program_yogunlugu_asim')) {
+    conflicts.push('CONFLICT: Stress is already high and next week is also above capacity. Flag this combination as particularly risky.');
+  }
+
+  if (conflicts.length > 0) {
+    lines.push('Detected contradictions — address these explicitly:');
+    for (const c of conflicts) lines.push(`⚠ ${c}`);
+    lines.push('');
+  }
 
   // ── Student profile (if available) ───────────────────────────────────────
   if (context.studentProfile) {
@@ -76,6 +102,15 @@ export function buildSystemFeedbackPrompt(context: SystemFeedbackContext): strin
     lines.push('Additional context:');
     for (const ctx of extraContext) {
       lines.push(`- ${ctx}`);
+    }
+    lines.push('');
+  }
+
+  // ── Previous insight answers ─────────────────────────────────────────────
+  if (context.insightAnswers && context.insightAnswers.length > 0) {
+    lines.push('Student\'s previous answers to insight questions (use to personalise your message):');
+    for (const a of context.insightAnswers) {
+      lines.push(`- [${a.questionType}] Answer: "${a.answer}"`);
     }
     lines.push('');
   }
