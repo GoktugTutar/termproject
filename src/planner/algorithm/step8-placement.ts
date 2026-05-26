@@ -1,6 +1,7 @@
 // Dersleri gün sınıfıyla eşleştirerek boş zaman pencerelerine yerleştir (ADIM 8)
 
 import { DayConfig } from './step5-day-distribution';
+import { ConstraintConfig, DEFAULT_CONSTRAINT_CONFIG } from './constraint-config';
 
 export type LessonClass = 'AGIR' | 'ORTA' | 'HAFIF';
 export type DayClass = 'rahat' | 'normal' | 'yorucu';
@@ -129,6 +130,7 @@ function scoreCandidate(
   lessonClass: LessonClass,
   preferredRange: { start: number; end: number },
   dayClass: DayClass,
+  agirYorucuPenalty: number = -20,
 ): number {
   let score = 0;
 
@@ -154,7 +156,8 @@ function scoreCandidate(
 
   if (lessonClass === 'HAFIF' && overlapRatio === 0) score += 5;
   if (lessonClass === 'AGIR'  && dayClass === 'rahat')  score += 15;
-  if (lessonClass === 'AGIR'  && dayClass === 'yorucu') score -= 20;
+  // Mevcut -20 ceza ConstraintConfig'den gelir; kullanıcı override etmediyse -20 kalır
+  if (lessonClass === 'AGIR'  && dayClass === 'yorucu') score += agirYorucuPenalty;
 
   return score;
 }
@@ -186,13 +189,14 @@ function placeIntoWindows(
   lessonClass: LessonClass,
   dayClass: DayClass,
   wave: 1 | 2 | 3 | 4 | 5,
+  agirYorucuPenalty: number = -20,
 ): boolean {
   const candidates = generateCandidates(windows, neededMin);
   if (candidates.length === 0) return false;
 
   const scored = candidates.map((c) => ({
     ...c,
-    score: scoreCandidate(c.startMin, c.endMin, lessonClass, preferredRange, dayClass),
+    score: scoreCandidate(c.startMin, c.endMin, lessonClass, preferredRange, dayClass, agirYorucuPenalty),
   }));
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0];
@@ -252,6 +256,7 @@ function evaluateScheduleQuality(
   dayConfigs: DayConfig[],
   sessionsUsed: number[],
   preferredRange: { start: number; end: number },
+  preferredRangeByDate: Record<string, { start: number; end: number }> = {},
 ): ScheduleQuality {
   const lessonClassMap = new Map(
     lessonOrder.map((l) => [l.lessonId, classifyLesson(l.difficulty, l.priority)]),
@@ -278,8 +283,11 @@ function evaluateScheduleQuality(
   let dayMatchSum = 0;
 
   for (const block of placed) {
-    const overlapStart  = Math.max(block.startMin, preferredRange.start);
-    const overlapEnd    = Math.min(block.endMin,   preferredRange.end);
+    // Bloğun gününe ait preferred range varsa onu kullan, yoksa global
+    const blockDateStr = `${block.date.getFullYear()}-${String(block.date.getMonth() + 1).padStart(2, '0')}-${String(block.date.getDate()).padStart(2, '0')}`;
+    const blockRange = preferredRangeByDate[blockDateStr] ?? preferredRange;
+    const overlapStart  = Math.max(block.startMin, blockRange.start);
+    const overlapEnd    = Math.min(block.endMin,   blockRange.end);
     const overlapMin    = Math.max(0, overlapEnd - overlapStart);
     const duration      = block.endMin - block.startMin;
     const overlapRatio  = duration > 0 ? overlapMin / duration : 0;
@@ -361,6 +369,8 @@ interface PlacementResult {
 // allowConsecutive  : AGIR art arda kısıtı görmezden gel
 // allowSessionOverflow: maxSessions sınırını aş
 // stepDownToPlace   : pencereye sığmıyorsa toPlace'i 1'e kadar azaltarak dene
+// constraintConfig  : kullanıcı tercihleri (allowConsecutiveAgir, slottedModeDisabled, agirYorucuPenalty)
+// preferredRangeByDate: gün bazlı tercih saati override haritası
 function runWave(
   wave: 1 | 2 | 3 | 4 | 5,
   lessonOrder: LessonInput[],
@@ -375,6 +385,8 @@ function runWave(
   allowConsecutive: boolean,
   allowSessionOverflow: boolean,
   stepDownToPlace: boolean,
+  constraintConfig: ConstraintConfig,
+  preferredRangeByDate: Record<string, { start: number; end: number }>,
 ): void {
   const lessonMeta = new Map(
     lessonOrder.map((l) => [
@@ -417,10 +429,15 @@ function runWave(
         if (sessionsUsed[dayIdx] >= effectiveMaxSessions) continue;
 
         if (!allowConsecutive) {
-          // Slotlu mod: 3 üst üste gün kontrolü
-          if (slottedMode && creates3Consecutive(dayIdx, placedDays)) continue;
-          // AGIR ders art arda gün yasağı
+          // Slotlu mod: 3 üst üste gün kontrolü — kullanıcı override ettiyse atla
           if (
+            !constraintConfig.slottedModeDisabled &&
+            slottedMode &&
+            creates3Consecutive(dayIdx, placedDays)
+          ) continue;
+          // AGIR ders art arda gün yasağı — kullanıcı override ettiyse atla
+          if (
+            !constraintConfig.allowConsecutiveAgir &&
             lessonClass === 'AGIR' &&
             (placedDays.has(dayIdx - 1) || placedDays.has(dayIdx + 1))
           ) continue;
@@ -430,6 +447,7 @@ function runWave(
         const d = day.date;
         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const windows = freeWindows[dateStr] || [];
+        const dayRange = preferredRangeByDate[dateStr] ?? preferredRange;
 
         const maxToPlace = Math.min(
           remaining[lessonId],
@@ -443,14 +461,14 @@ function runWave(
 
         if (stepDownToPlace) {
           for (let tp = maxToPlace; tp >= 1; tp--) {
-            if (placeIntoWindows(windows, tp * 30, preferredRange, lessonId, day, tp, placed, lessonClass, dayClass, wave)) {
+            if (placeIntoWindows(windows, tp * 30, dayRange, lessonId, day, tp, placed, lessonClass, dayClass, wave, constraintConfig.agirYorucuPenalty)) {
               placedOk = true;
               actualToPlace = tp;
               break;
             }
           }
         } else {
-          placedOk = placeIntoWindows(windows, maxToPlace * 30, preferredRange, lessonId, day, maxToPlace, placed, lessonClass, dayClass, wave);
+          placedOk = placeIntoWindows(windows, maxToPlace * 30, dayRange, lessonId, day, maxToPlace, placed, lessonClass, dayClass, wave, constraintConfig.agirYorucuPenalty);
         }
 
         freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
@@ -474,11 +492,23 @@ export function step8Placement(
   dayConfigs: DayConfig[],
   freeWindows: Record<string, TimeWindow[]>,
   preferredStudyTime: string,
+  constraintConfig: ConstraintConfig = DEFAULT_CONSTRAINT_CONFIG,
 ): PlacementResult {
   const placed: PlacedBlock[] = [];
   const preferredRange    = getPreferredRange(preferredStudyTime);
   const dayBlocksRemaining = dayConfigs.map((d) => d.maxBlocks);
   const sessionsUsed       = dayConfigs.map(() => 0);
+
+  // Gün bazlı tercih saati haritası — config'de override yoksa global range kullanılır
+  const preferredRangeByDate: Record<string, { start: number; end: number }> = {};
+  for (const day of dayConfigs) {
+    const d = day.date;
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const override = constraintConfig.dayStudyTimeOverrides[day.dayOfWeek];
+    preferredRangeByDate[dateStr] = override
+      ? getPreferredRange(override)
+      : preferredRange;
+  }
 
   const remaining: Record<number, number> = {};
   const placedDaysPerLesson: Record<number, Set<number>> = {};
@@ -501,17 +531,17 @@ export function step8Placement(
     placed,
   ] as const;
 
-  // Dalga 1: tüm kısıtlar aktif
-  runWave(1, ...sharedArgs, false, false, false);
+  // Dalga 1: tüm kısıtlar aktif (config'le açılabilir olanlar dahil)
+  runWave(1, ...sharedArgs, false, false, false, constraintConfig, preferredRangeByDate);
 
   // Dalga 2: AGIR art arda + slotlu mod kısıtı kaldırıldı
-  runWave(2, ...sharedArgs, true, false, false);
+  runWave(2, ...sharedArgs, true, false, false, constraintConfig, preferredRangeByDate);
 
   // Dalga 3: küçük pencere — toPlace maxBPS'den 1'e kadar azaltarak dene
-  runWave(3, ...sharedArgs, true, false, true);
+  runWave(3, ...sharedArgs, true, false, true, constraintConfig, preferredRangeByDate);
 
   // Dalga 4: art arda kısıt yok + maxSessions overflow
-  runWave(4, ...sharedArgs, true, true, false);
+  runWave(4, ...sharedArgs, true, true, false, constraintConfig, preferredRangeByDate);
 
   // Dalga 5: her şeyi zorla (dayBlocks bütçesi görmezden) — round-robin + step-down
   const wave5Meta = new Map(
@@ -532,6 +562,7 @@ export function step8Placement(
         const dateStr  = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const windows  = freeWindows[dateStr] || [];
         const dayClass = getDayClass(day);
+        const dayRange = preferredRangeByDate[dateStr] ?? preferredRange;
 
         const maxToPlace = Math.min(remaining[lessonId], day.maxBlocksPerSession);
         if (maxToPlace <= 0) continue;
@@ -539,7 +570,7 @@ export function step8Placement(
         let placedOk = false;
         let actualToPlace = maxToPlace;
         for (let tp = maxToPlace; tp >= 1; tp--) {
-          if (placeIntoWindows(windows, tp * 30, preferredRange, lessonId, day, tp, placed, lessonClass, dayClass, 5)) {
+          if (placeIntoWindows(windows, tp * 30, dayRange, lessonId, day, tp, placed, lessonClass, dayClass, 5, constraintConfig.agirYorucuPenalty)) {
             placedOk = true;
             actualToPlace = tp;
             break;
@@ -584,6 +615,7 @@ export function step8Placement(
     dayConfigs,
     sessionsUsed,
     preferredRange,
+    preferredRangeByDate,
   );
 
   console.log(

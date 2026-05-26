@@ -10,6 +10,7 @@ import { FeedbackModule } from './feedback/feedback.module';
 import { SystemFeedbackModule } from './system-feedback/system-feedback.module';
 import { DebugController } from './debug/debug.controller';
 import { AiCoachModule } from './ai-coach/ai-coach.module';
+import { UserConstraintModule } from './user-constraint/user-constraint.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AiCoachModule } from './ai-coach/ai-coach.module';
     FeedbackModule,
     AiCoachModule,
     SystemFeedbackModule,
+    UserConstraintModule,
   ],
   controllers: [DebugController],
 })

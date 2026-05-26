@@ -30,6 +30,7 @@ model User {
   busySlots          UserBusySlot[]
   weeklyFeedbacks    WeeklyFeedback[]
   examResults    ExamResult[]
+  constraints        UserConstraint[]
 }
 
 model StudentProfile {
@@ -169,6 +170,23 @@ model SystemFeedbackLog {
   user        User     @relation(fields: [userId], references: [id])
 
   @@index([userId, type, lessonId])
+}
+
+// Kullanıcı tarafından AI konuşması veya profil ekranı üzerinden eklenen
+// planlama tercihleri. Kayıt yoksa sistem varsayılan davranışını korur.
+model UserConstraint {
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  type            String    // "allow_consecutive_agir" | "disable_slotted_mode" | "reduce_yorucu_penalty" | "study_end_hour" | "study_start_hour" | "day_study_time"
+  params          Json      @default("{}")
+  isActive        Boolean   @default(true)
+  source          String    @default("user_manual") // "user_manual" | "ai_conversation" | "system_auto"
+  expiresAt       DateTime?
+  confirmedByUser Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, isActive])
 }
 
 model LessonPlanOverride {

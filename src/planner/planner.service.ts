@@ -12,6 +12,11 @@ import { step7CognitiveLoad } from './algorithm/step7-cognitive-load';
 import { step7_5PlaceReview } from './algorithm/step7_5-place-review';
 import { step8Placement } from './algorithm/step8-placement';
 import { step9Recalculate } from './algorithm/step9-recalculate';
+import {
+  ConstraintConfig,
+  DEFAULT_CONSTRAINT_CONFIG,
+  buildConstraintConfig,
+} from './algorithm/constraint-config';
 
 type CreateWeeklyPlanOptions = {
   fromDate?: Date;
@@ -90,9 +95,11 @@ export class PlannerService {
 
   private getFreeWindows(
     mergedBusy: Array<{ start: number; end: number }>,
+    config: ConstraintConfig = DEFAULT_CONSTRAINT_CONFIG,
   ): Array<{ start: number; end: number }> {
-    const dayStart = 8 * 60;
-    const dayEnd = 24 * 60;
+    // Config'de override yoksa varsayılan 08:00-24:00 aralığı kullanılır
+    const dayStart = (config.studyStartHour ?? 8) * 60;
+    const dayEnd = (config.studyEndHour ?? 24) * 60;
     const free: Array<{ start: number; end: number }> = [];
     let current = dayStart;
     for (const busy of mergedBusy) {
@@ -101,6 +108,19 @@ export class PlannerService {
     }
     if (current < dayEnd) free.push({ start: current, end: dayEnd });
     return free;
+  }
+
+  // Aktif UserConstraint kayıtlarını DB'den çek ve ConstraintConfig'e dönüştür.
+  // Kayıt yoksa DEFAULT_CONSTRAINT_CONFIG döner → davranış mevcut sistemle aynıdır.
+  private async loadConstraintConfig(userId: number, now: Date): Promise<ConstraintConfig> {
+    const records = await this.prisma.userConstraint.findMany({
+      where: {
+        userId,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+      },
+    });
+    return buildConstraintConfig(records, now);
   }
 
   async createWeeklyPlan(
@@ -132,6 +152,10 @@ export class PlannerService {
     });
 
     if (!user) throw new Error('Kullanıcı bulunamadı');
+
+    // Aktif kullanıcı tercihlerini yükle (kayıt yoksa DEFAULT döner)
+    const constraintConfig = await this.loadConstraintConfig(userId, now);
+    console.log(`[P] constraints: consecAgir=${constraintConfig.allowConsecutiveAgir} slottedOff=${constraintConfig.slottedModeDisabled} yorucuPen=${constraintConfig.agirYorucuPenalty} endH=${constraintConfig.studyEndHour ?? 24} startH=${constraintConfig.studyStartHour ?? 8} dayOverrides=${Object.keys(constraintConfig.dayStudyTimeOverrides).length}`);
 
     const partialStart = options.fromDate ? this.startOfLocalDay(options.fromDate) : null;
 
@@ -222,7 +246,7 @@ export class PlannerService {
     for (const day of planningDays) {
       const dateStr = this.toLocalDateStr(day.date);
       const mergedBusy = this.mergeBusySlots(day.busySlots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })));
-      freeWindows[dateStr] = this.getFreeWindows(mergedBusy);
+      freeWindows[dateStr] = this.getFreeWindows(mergedBusy, constraintConfig);
     }
 
     // Hafta öncesi Cmt/Paz günlerini sadece review yerleştirme için freeWindows'a ekle (arkadaşın fix'i)
@@ -241,6 +265,7 @@ export class PlannerService {
         this.mergeBusySlots(
           preBusy.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
         ),
+        constraintConfig,
       );
     }
 
@@ -289,6 +314,7 @@ export class PlannerService {
       dayConfigs,
       updatedFreeWindows,
       user.preferredStudyTime,
+      constraintConfig,
     );
 
     console.log(`[P] sonuc: ${lessonPlaced.length} ders blogu + ${reviewPlaced.length} tekrar blogu | score=${programScore.toFixed(2)} level=${programLevel} forced=${forcedBlocks}`);
