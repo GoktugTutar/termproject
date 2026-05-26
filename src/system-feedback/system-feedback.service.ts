@@ -12,10 +12,20 @@ export class SystemFeedbackService {
       | { burnoutDetected?: boolean; programZorlastu?: boolean }
       | undefined = undefined;
     const now = getCurrentTime();
+
+    // suggestedConstraint: Flutter'a hangi constraint kartını göstereceğini bildirir.
+    // kind: 'bool' → Evet/Hayır | 'hour_end' / 'hour_start' → saat chip seçimi
+    //       'time_of_day' → gün bazlı tercih seçimi (day_study_time için)
+    type SuggestedConstraint =
+      | { kind: 'bool'; type: string; question: string }
+      | { kind: 'hour_end' | 'hour_start'; type: string; question: string; options: number[] }
+      | { kind: 'time_of_day'; type: string; question: string; dayOfWeek: number; dayName: string };
+
     const messages: Array<{
       type: string;
       message: string;
       suggestion: string;
+      suggestedConstraint?: SuggestedConstraint;
     }> = [];
     const examResultReminderLessons: string[] = [];
     let overridesWritten = 0;
@@ -201,6 +211,11 @@ export class SystemFeedbackService {
             message: `${lesson.name} has been delayed multiple times — the planner has switched it to slot mode.`,
             suggestion:
               'The planner has switched this lesson to slot mode — it now gets a guaranteed spot every few days instead of being scheduled flexibly. Try to complete at least one of those fixed sessions this week.',
+            suggestedConstraint: {
+              kind: 'bool',
+              type: 'disable_slotted_mode',
+              question: 'Slotlu modu kapatayım mı?',
+            },
           });
           await this.logFeedback(userId, 'sik_erteleme', lesson.id);
         } else {
@@ -214,10 +229,46 @@ export class SystemFeedbackService {
     if (last3Checklists.length >= 3 && last3Checklists.every((c) => c.stressLevel >= 4)) {
       if (!(await this.isOnCooldown(userId, 'yuksek_stres'))) {
         console.log(`[SF] ✓ yuksek_stres (levels: ${last3Checklists.map((c) => c.stressLevel).join(',')})`);
+
+        // asiri_yuk da tetiklendiyse → allow_consecutive_agir öner
+        const asiriYukFired = messages.some((m) => m.type === 'asiri_yuk');
+
+        // Yoksa: yorucu günlerde completion iyi mi? → reduce_yorucu_penalty öner
+        let yorucuDayCompletion = 0;
+        if (!asiriYukFired) {
+          const userBusySlots = await this.prisma.userBusySlot.findMany({ where: { userId } });
+          const yorucuDows = new Set(
+            userBusySlots
+              .filter((s) => s.fatigueLevel >= 4)
+              .map((s) => s.dayOfWeek), // 1-7
+          );
+          if (yorucuDows.size > 0) {
+            let planned = 0, completed = 0;
+            for (const checklist of recentChecklists) {
+              const dow = new Date(checklist.date).getDay();
+              const localDow = dow === 0 ? 7 : dow;
+              if (!yorucuDows.has(localDow)) continue;
+              for (const item of checklist.items) {
+                planned += item.plannedBlocks;
+                completed += item.completedBlocks;
+              }
+            }
+            yorucuDayCompletion = planned > 0 ? completed / planned : 0;
+            console.log(`[SF] yorucu gun completion=${(yorucuDayCompletion * 100).toFixed(0)}%`);
+          }
+        }
+
+        const suggestedConstraint: (typeof messages)[0]['suggestedConstraint'] = asiriYukFired
+          ? { kind: 'bool', type: 'allow_consecutive_agir', question: 'Zor dersleri art arda gruplayalım mı?' }
+          : yorucuDayCompletion >= 0.6
+          ? { kind: 'bool', type: 'reduce_yorucu_penalty', question: 'Yoğun günlere de zor ders ekleyelim mi?' }
+          : undefined;
+
         messages.push({
           type: 'yuksek_stres',
           message: 'Your stress level has been high (≥4) for 3 days in a row.',
           suggestion: 'Consider reviewing your workload or planning a lighter week.',
+          ...(suggestedConstraint ? { suggestedConstraint } : {}),
         });
         await this.logFeedback(userId, 'yuksek_stres');
       } else {
@@ -239,6 +290,12 @@ export class SystemFeedbackService {
           type: 'hareketsizlik',
           message: 'No study blocks have been completed in the last 2 days.',
           suggestion: 'Try starting with a short session today — even 30 minutes makes a difference.',
+          suggestedConstraint: {
+            kind: 'hour_start',
+            type: 'study_start_hour',
+            question: 'Bloklar çok erken mi başlıyor? Ne zaman çalışabilirsin?',
+            options: [9, 10, 11, 12],
+          },
         });
         await this.logFeedback(userId, 'hareketsizlik');
       } else {
@@ -435,13 +492,53 @@ export class SystemFeedbackService {
           }
 
           console.log(`[SF] ✓ dusuk_uyku_stres (badSleep=${badSleepDays.length}/3 stress=${avgStress.toFixed(1)} goodComp=${goodComp?.toFixed(2) ?? '-'} badComp=${badComp?.toFixed(2) ?? '-'})`);
-          messages.push({ type: 'dusuk_uyku_stres', message, suggestion });
+          messages.push({
+            type: 'dusuk_uyku_stres',
+            message,
+            suggestion,
+            suggestedConstraint: {
+              kind: 'hour_end',
+              type: 'study_end_hour',
+              question: 'Kaç\'a kadar çalışmak istersin?',
+              options: [20, 21, 22],
+            },
+          });
           await this.logFeedback(userId, 'dusuk_uyku_stres');
         } else {
           console.log(`[SF] ⏭ dusuk_uyku_stres (cooldown)`);
         }
       }
     }
+    // ── DOW analizi → day_study_time önerisi ────────────────────────────────
+    // StudentProfile.dowCompletionRates'ten sürekli düşük olan günü bul
+    if (profile) {
+      const dowRates: number[] = JSON.parse(profile.dowCompletionRates ?? '[0,0,0,0,0,0,0]');
+      const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      for (let i = 0; i < 7; i++) {
+        if (dowRates[i] > 0 && dowRates[i] < 0.4) {
+          const dow = i + 1; // 1=Mon ... 7=Sun
+          const cooldownKey = `day_study_time_suggestion_dow${dow}`;
+          if (!(await this.isOnCooldown(userId, cooldownKey))) {
+            console.log(`[SF] ✓ dow_dusuk_completion -> ${dayNames[i]} (${(dowRates[i] * 100).toFixed(0)}%)`);
+            messages.push({
+              type: 'dow_dusuk_completion',
+              message: `${dayNames[i]} sessions are consistently incomplete — completion is at ${Math.round(dowRates[i] * 100)}%.`,
+              suggestion: `Try a different time slot on ${dayNames[i]} — your current preferred time may not suit this day.`,
+              suggestedConstraint: {
+                kind: 'time_of_day',
+                type: 'day_study_time',
+                question: `${dayNames[i]} için farklı bir çalışma saati deneyelim mi?`,
+                dayOfWeek: dow,
+                dayName: dayNames[i],
+              },
+            });
+            await this.logFeedback(userId, cooldownKey);
+            break; // aynı anda en fazla 1 gün öner
+          }
+        }
+      }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     const now_iso = now.toISOString();
     for (const msg of messages) {
@@ -477,22 +574,30 @@ export class SystemFeedbackService {
 
   // Per-type cooldown durations in hours
   private readonly cooldownHours: Record<string, number> = {
-    sure_isteme_ama_tamamlayamama: 168,
-    sinav_az_calisma:              24,
-    sinav_az_blok:                 168,
-    asiri_yuk:                     168,
-    sik_erteleme:                  48,
-    yuksek_stres:                  24,
-    hareketsizlik:                 24,
-    sinav_yogunlugu_kritik:        24,
-    sinav_yogunlugu_yogun:         48,
-    sinav_yogunlugu_orta:          168,
-    program_yogunlugu_asim:        168,
-    program_yogunlugu_dusuk:       168,
-    kombine_yogun_stres:           24,
-    kombine_yogun_erteleme:        168,
-    dusuk_uyku_stres:              24,
-    sinav_sonucu_gir:              24,
+    sure_isteme_ama_tamamlayamama:   168,
+    sinav_az_calisma:                24,
+    sinav_az_blok:                   168,
+    asiri_yuk:                       168,
+    sik_erteleme:                    48,
+    yuksek_stres:                    24,
+    hareketsizlik:                   24,
+    sinav_yogunlugu_kritik:          24,
+    sinav_yogunlugu_yogun:           48,
+    sinav_yogunlugu_orta:            168,
+    program_yogunlugu_asim:          168,
+    program_yogunlugu_dusuk:         168,
+    kombine_yogun_stres:             24,
+    kombine_yogun_erteleme:          168,
+    dusuk_uyku_stres:                24,
+    sinav_sonucu_gir:                24,
+    // DOW bazlı suggestion cooldown'ları (1 hafta)
+    day_study_time_suggestion_dow1:  168,
+    day_study_time_suggestion_dow2:  168,
+    day_study_time_suggestion_dow3:  168,
+    day_study_time_suggestion_dow4:  168,
+    day_study_time_suggestion_dow5:  168,
+    day_study_time_suggestion_dow6:  168,
+    day_study_time_suggestion_dow7:  168,
   };
 
   // Cooldown check — has this type+lesson combination been triggered recently?
