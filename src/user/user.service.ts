@@ -53,6 +53,20 @@ export class UserService {
     return parsed;
   }
 
+  private parseDateKey(date: string): Date {
+    const dayOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!dayOnly) {
+      throw new BadRequestException('Tarih YYYY-MM-DD formatında olmalı.');
+    }
+    const parsed = new Date(
+      Date.UTC(Number(dayOnly[1]), Number(dayOnly[2]) - 1, Number(dayOnly[3])),
+    );
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Tarih geçersiz.');
+    }
+    return parsed;
+  }
+
   async setup(userId: number, dto: SetupUserDto) {
     const { busySlots, academicTerm, ...rest } = dto;
 
@@ -96,6 +110,32 @@ export class UserService {
       where: { id: userId },
       include: { busySlots: true },
     });
+  }
+
+  async getDailyNote(userId: number, date: string) {
+    const parsedDate = this.parseDateKey(date);
+    const note = await this.prisma.dailyNote.findUnique({
+      where: { userId_date: { userId, date: parsedDate } },
+    });
+    return {
+      date,
+      content: note?.content ?? '',
+      updatedAt: note?.updatedAt ?? null,
+    };
+  }
+
+  async saveDailyNote(userId: number, date: string, content: string) {
+    const parsedDate = this.parseDateKey(date);
+    const note = await this.prisma.dailyNote.upsert({
+      where: { userId_date: { userId, date: parsedDate } },
+      create: { userId, date: parsedDate, content },
+      update: { content },
+    });
+    return {
+      date,
+      content: note.content,
+      updatedAt: note.updatedAt,
+    };
   }
 
   // Dijital ikiz profilini güncelle — checklist submit sonrası çağrılır

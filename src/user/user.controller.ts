@@ -3,6 +3,7 @@ import {
   Post,
   Put,
   Body,
+  Param,
   UseGuards,
   Request,
   Get,
@@ -40,6 +41,26 @@ export class UserController {
   @Get('student-profile')
   getStudentProfile(@Request() req) {
     return this.userService.getStudentProfile(req.user.id);
+  }
+
+  // Belirli bir günün notunu getir
+  @Get('daily-note/:date')
+  getDailyNote(@Request() req, @Param('date') date: string) {
+    return this.userService.getDailyNote(req.user.id, date);
+  }
+
+  // Belirli bir günün notunu kaydet/güncelle
+  @Put('daily-note/:date')
+  saveDailyNote(
+    @Request() req,
+    @Param('date') date: string,
+    @Body() body: { content?: string },
+  ) {
+    return this.userService.saveDailyNote(
+      req.user.id,
+      date,
+      body?.content ?? '',
+    );
   }
 
   // Aktif dönemi sonlandır

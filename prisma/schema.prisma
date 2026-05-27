@@ -9,29 +9,30 @@ datasource db {
 }
 
 model User {
-  id                 Int                  @id @default(autoincrement())
-  email              String               @unique
-  passwordHash       String
-  preferredStudyTime StudyTime            @default(morning)
-  studyStyle         StudyStyle           @default(normal)
-  currentTermStartedAt DateTime?           @default(now())
-  gradeLevel         Int?
-  gpa                Float?
-  academicTerm       String?
-  avatarSvg          String?
-  avatarOptions      Json?
-  checklists         DailyChecklist[]
-  lessons            Lesson[]
-  planOverrides      LessonPlanOverride[]
-  scheduledBlocks    ScheduledBlock[]
-  profile            StudentProfile?
-  feedbackLogs       SystemFeedbackLog[]
-  terms              Term[]
-  busySlots          UserBusySlot[]
-  weeklyFeedbacks    WeeklyFeedback[]
-  examResults    ExamResult[]
-  constraints        UserConstraint[]
-  insightAnswers     InsightAnswer[]
+  id                   Int                  @id @default(autoincrement())
+  email                String               @unique
+  passwordHash         String
+  preferredStudyTime   StudyTime            @default(morning)
+  studyStyle           StudyStyle           @default(normal)
+  currentTermStartedAt DateTime?            @default(now())
+  gradeLevel           Int?
+  gpa                  Float?
+  academicTerm         String?
+  avatarSvg            String?
+  avatarOptions        Json?
+  checklists           DailyChecklist[]
+  lessons              Lesson[]
+  planOverrides        LessonPlanOverride[]
+  scheduledBlocks      ScheduledBlock[]
+  profile              StudentProfile?
+  feedbackLogs         SystemFeedbackLog[]
+  terms                Term[]
+  busySlots            UserBusySlot[]
+  weeklyFeedbacks      WeeklyFeedback[]
+  examResults          ExamResult[]
+  constraints          UserConstraint[]
+  insightAnswers       InsightAnswer[]
+  dailyNotes           DailyNote[]
 }
 
 model StudentProfile {
@@ -91,15 +92,15 @@ model Lesson {
   deadlines           LessonDeadline[]
   exams               LessonExam[]
   scheduledBlocks     ScheduledBlock[]
-  examResults    ExamResult[]
+  examResults         ExamResult[]
 }
 
 model LessonExam {
-  id       Int      @id @default(autoincrement())
+  id       Int          @id @default(autoincrement())
   lessonId Int
   examDate DateTime
-  lesson   Lesson   @relation(fields: [lessonId], references: [id])
-  results        ExamResult[]
+  lesson   Lesson       @relation(fields: [lessonId], references: [id])
+  results  ExamResult[]
 }
 
 model LessonDeadline {
@@ -145,6 +146,7 @@ model ChecklistItem {
   delayed         Boolean        @default(false)
   isReview        Boolean        @default(false) // tekrar bloğu mu?
 }
+
 model WeeklyFeedback {
   id               Int              @id @default(autoincrement())
   userId           Int
@@ -178,7 +180,7 @@ model SystemFeedbackLog {
 model UserConstraint {
   id              Int       @id @default(autoincrement())
   userId          Int
-  type            String    // "allow_consecutive_agir" | "disable_slotted_mode" | "reduce_yorucu_penalty" | "study_end_hour" | "study_start_hour" | "day_study_time"
+  type            String // "allow_consecutive_agir" | "disable_slotted_mode" | "reduce_yorucu_penalty" | "study_end_hour" | "study_start_hour" | "day_study_time"
   params          Json      @default("{}")
   isActive        Boolean   @default(true)
   source          String    @default("user_manual") // "user_manual" | "ai_conversation" | "system_auto"
@@ -230,9 +232,9 @@ model ExamResult {
   failReason ExamFailReason?
   createdAt  DateTime        @default(now())
 
-  user       User            @relation(fields: [userId], references: [id])
-  lesson     Lesson          @relation(fields: [lessonId], references: [id])
-  exam       LessonExam      @relation(fields: [examId], references: [id])
+  user   User       @relation(fields: [userId], references: [id])
+  lesson Lesson     @relation(fields: [lessonId], references: [id])
+  exam   LessonExam @relation(fields: [examId], references: [id])
 
   @@index([userId, lessonId])
   @@index([userId, examId])
@@ -258,4 +260,18 @@ model InsightAnswer {
   createdAt    DateTime @default(now())
 
   @@index([userId, questionType])
+}
+
+model DailyNote {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  date      DateTime
+  content   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }

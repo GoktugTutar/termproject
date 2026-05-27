@@ -13,7 +13,7 @@ Bu dosya projenin tek yetkili referansıdır. Algoritma, veri modeli, API tasar�
 | Backend    | NestJS (TypeScript)            |
 | Veritabanı | PostgreSQL + Prisma ORM        |
 | Frontend   | Flutter                        |
-| AI         | Claude Haiku API               |
+| AI         | OpenRouter Chat Completions (`baidu/cobuddy:free`) |
 | Auth       | JWT (passport-jwt + bcrypt)    |
 
 ---
@@ -77,6 +77,18 @@ termprojectFull/
 │   │   │   ├── system-feedback.controller.ts
 │   │   │   ├── system-feedback.service.ts
 │   │   │   └── ai-prompt.ts
+│   │   ├── ai-coach/                   # Daily coach, what-if ve sınav sonucu AI mesajları
+│   │   │   ├── ai-coach.module.ts
+│   │   │   ├── ai-coach.controller.ts
+│   │   │   ├── ai-coach.service.ts
+│   │   │   └── prompts/
+│   │   │       ├── coach.prompt.ts
+│   │   │       ├── exam-result.prompt.ts
+│   │   │       └── what-if.prompt.ts
+│   │   ├── user-constraint/            # Kullanıcı planlama tercihleri / constraint kayıtları
+│   │   │   ├── user-constraint.module.ts
+│   │   │   ├── user-constraint.controller.ts
+│   │   │   └── user-constraint.service.ts
 │   │   ├── lesson/
 │   │   │   ├── lesson.module.ts
 │   │   │   ├── lesson.controller.ts
@@ -85,7 +97,8 @@ termprojectFull/
 │   │   │       ├── create-lesson.dto.ts
 │   │   │       ├── update-lesson.dto.ts
 │   │   │       ├── add-exam.dto.ts
-│   │   │       └── add-deadline.dto.ts
+│   │   │       ├── add-deadline.dto.ts
+│   │   │       └── save-exam-result.dto.ts
 │   │   ├── prisma/                     # Prisma client sarmalayıcısı
 │   │   │   ├── prisma.module.ts
 │   │   │   └── prisma.service.ts
@@ -128,6 +141,11 @@ model User {
   email              String           @unique
   passwordHash       String
   currentTermStartedAt DateTime?       @default(now())
+  gradeLevel         Int?
+  gpa                Float?
+  academicTerm       String?
+  avatarSvg          String?
+  avatarOptions      Json?
   preferredStudyTime StudyTime        @default(morning)
   studyStyle         StudyStyle       @default(normal)
   busySlots          UserBusySlot[]
@@ -136,6 +154,12 @@ model User {
   checklists         DailyChecklist[]
   weeklyFeedbacks    WeeklyFeedback[]
   scheduledBlocks    ScheduledBlock[]
+  feedbackLogs       SystemFeedbackLog[]
+  planOverrides      LessonPlanOverride[]
+  examResults        ExamResult[]
+  constraints        UserConstraint[]
+  insightAnswers     InsightAnswer[]
+  dailyNotes         DailyNote[]
   profile            StudentProfile?
 }
 
@@ -159,7 +183,6 @@ model StudentProfile {
   // Rolling 7-day metrics
   completionRate7d   Float    @default(0)
   avgStress7d        Float    @default(3)
-  avgFatigue7d       Float    @default(3)
 
   // Per-day-of-week completion rates (Mon=0..Sun=6), JSON string
   dowCompletionRates String   @default("[0,0,0,0,0,0,0]")
@@ -172,6 +195,12 @@ model StudentProfile {
 
   // Son 14 günde en az 1 blok tamamlanan gün oranı
   consistencyScore   Float    @default(0)
+
+  // Uyku ile performans/stres korelasyonu
+  goodSleepCompletionRate Float?
+  badSleepCompletionRate  Float?
+  goodSleepAvgStress      Float?
+  badSleepAvgStress       Float?
 
   totalSubmissions   Int      @default(0)
 }
@@ -217,6 +246,7 @@ model Lesson {
   exams               LessonExam[]
   deadlines           LessonDeadline[]
   scheduledBlocks     ScheduledBlock[]
+  examResults         ExamResult[]
 }
 
 model LessonExam {
@@ -224,6 +254,7 @@ model LessonExam {
   lessonId  Int
   lesson    Lesson   @relation(fields: [lessonId], references: [id])
   examDate  DateTime
+  results   ExamResult[]
 }
 
 model LessonDeadline {
@@ -255,7 +286,7 @@ model DailyChecklist {
   user         User            @relation(fields: [userId], references: [id])
   date         DateTime
   stressLevel  Int             @default(3)
-  fatigueLevel Int             @default(3)
+  sleptWell    Boolean?
   items        ChecklistItem[]
 }
 
@@ -267,6 +298,7 @@ model ChecklistItem {
   plannedBlocks      Int
   completedBlocks    Int            @default(0)
   delayed            Boolean        @default(false)
+  isReview           Boolean        @default(false)
 }
 
 model WeeklyFeedback {
@@ -284,6 +316,81 @@ model LessonFeedback {
   weeklyFeedback   WeeklyFeedback @relation(fields: [weeklyFeedbackId], references: [id])
   lessonId         Int
   needsMoreTime    Int            // -1 | 0 | +1
+}
+
+model SystemFeedbackLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String
+  lessonId    Int?
+  triggeredAt DateTime @default(now())
+}
+
+model UserConstraint {
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  type            String    // allow_consecutive_agir | disable_slotted_mode | reduce_yorucu_penalty | study_end_hour | study_start_hour | day_study_time
+  params          Json      @default("{}")
+  isActive        Boolean   @default(true)
+  source          String    @default("user_manual")
+  expiresAt       DateTime?
+  confirmedByUser Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+}
+
+model LessonPlanOverride {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  lessonId           Int?
+  weekStart          DateTime
+  priorityBoost      Int      @default(0)
+  preferEarlySlot    Boolean  @default(false)
+  maxSessionBlocks   Int?
+  multiplierOverride Float?
+  addReviewBlock     Boolean  @default(false)
+  createdAt          DateTime @default(now())
+}
+
+model ExamResult {
+  id         Int             @id @default(autoincrement())
+  userId     Int
+  lessonId   Int
+  examId     Int
+  grade      String?
+  satisfied  Boolean?
+  failReason ExamFailReason?
+  createdAt  DateTime        @default(now())
+}
+
+enum ExamFailReason {
+  insufficient_preparation
+  poor_understanding
+  exam_anxiety
+  time_management_in_exam
+  poor_sleep_before
+  overwhelmed_by_workload
+  lack_of_focus
+}
+
+model InsightAnswer {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  questionType String
+  lessonId     Int?
+  answer       String
+  createdAt    DateTime @default(now())
+}
+
+model DailyNote {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  date      DateTime
+  content   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 ```
 
@@ -307,6 +414,8 @@ model LessonFeedback {
 | GET    | /user/me                | Giriş yapan kullanıcının profilini getir                             |
 | POST   | /user/setup             | Kullanıcı tercihlerini kaydet (ilk kurulum)                          |
 | PUT    | /user/busy-slots        | BusySlot'ları tamamen güncelle; plan oluşturmaz veya recalculation başlatmaz |
+| GET    | /user/daily-note/:date  | Belirli günün Today notunu getir (`YYYY-MM-DD`)                             |
+| PUT    | /user/daily-note/:date  | Belirli günün Today notunu kaydet/güncelle. Body: `{ content: string }`     |
 | GET    | /user/student-profile   | Dijital ikiz (StudentProfile) verisini getir                         |
 | POST   | /user/end-term          | Aktif dönemi kapat (`isActive=false`, `endedAt` set edilir)          |
 | POST   | /user/start-term        | Aktif dönemi kapatıp yeni boş dönem başlat. Body: `{ name?: string }`|
@@ -338,6 +447,8 @@ model LessonFeedback {
 | POST   | /checklist/submit  | Günlük checklist gönder      |
 | GET    | /checklist/history | Son 35 günün checklist durumunu getir |
 | GET    | /checklist/status/:date | Aynı haftadaki eksik checklistleri ve checklist kapalı durumunu getir |
+| GET    | /checklist/sleep/status | Bugünün uyku sorusu durumunu getir |
+| POST   | /checklist/sleep | Sabah uyku cevabını kaydet. Body: `{ sleptWell: boolean }` |
 | GET    | /checklist/:date   | Tarihe göre checklist getir  |
 
 ### First Week Onboarding
@@ -357,13 +468,31 @@ model LessonFeedback {
 | Method | Path               | Açıklama                                      |
 |--------|--------------------|-----------------------------------------------|
 | POST   | /feedback/weekly   | Kullanıcının haftalık geri bildirimini kaydet |
+| GET    | /feedback/weekly/status | Bu hafta weekly feedback gönderildi mi? |
 | GET    | /feedback/messages | Aktif uyarı ve öneri mesajlarını getir        |
 
 ### System Feedback
 
 | Method | Path                       | Açıklama                             |
 |--------|----------------------------|--------------------------------------|
-| GET    | /system-feedback/message   | AI destekli haftalık mesajı getir    |
+| GET    | /system-feedback/message   | Kural tabanlı mesajları, AI özetini ve sınav sonucu hatırlatmasını getir |
+| POST   | /system-feedback/insight-answer | Insight sorusuna verilen cevabı kaydet |
+
+### AI Coach
+
+| Method | Path                                      | Açıklama                                           |
+|--------|-------------------------------------------|----------------------------------------------------|
+| POST   | /ai-coach/daily-coach                     | Günlük AI coach mesajı üretir                      |
+| POST   | /ai-coach/what-if                         | What-if senaryosu için kısa AI yorumu üretir       |
+| POST   | /ai-coach/exam-result/:id/coach-message   | Memnun olunmayan sınav sonucu için kişisel öneri üretir |
+
+### User Constraint
+
+| Method | Path                 | Açıklama                                                  |
+|--------|----------------------|-----------------------------------------------------------|
+| GET    | /user-constraint     | Aktif kullanıcı planlama tercihlerini listele             |
+| POST   | /user-constraint     | Tercih ekle. Body: `{ type, params?, source?, expiresAt? }` |
+| DELETE | /user-constraint/:id | Tercihi pasifleştir                                       |
 
 ### Lesson
 
@@ -379,6 +508,8 @@ model LessonFeedback {
 | POST   | /lesson/:id/exam             | Sınav tarihi ekle                                  |
 | POST   | /lesson/:id/deadline         | Deadline / ödev ekle                               |
 | DELETE | /lesson/:id/deadline/:did    | Deadline sil                                       |
+| POST   | /lesson/:id/exam-result      | Sınav sonucunu, memnuniyet durumunu ve failReason'ı kaydet/güncelle |
+| DELETE | /lesson/:id/exam-result/:examId | Sınav sonucunu sil                              |
 
 ### Debug (korumasız — sadece MODE=test)
 
@@ -441,11 +572,11 @@ _override güncelleme: profil ekranındaki Edit butonuyla
 |-----------------------------|----------------------------------------------------------------------------|
 | `completionRate7d`          | Son 7 günde tamamlanan / planlanan blok oranı                              |
 | `avgStress7d`               | Son 7 günün stressLevel ortalaması                                         |
-| `avgFatigue7d`              | Son 7 günün fatigueLevel ortalaması                                        |
 | `dowCompletionRates`        | Haftanın her günü için tamamlama oranı (Mon=0..Sun=6, JSON)                |
 | `sweetSpotBlocks`           | Tam tamamlanan session'lardaki ortalama blockCount                         |
 | `stressNearExam`            | Sınavı ≤7 gün kalan günlerdeki ortalama stres                              |
 | `consistencyScore`          | Son 14 günde en az 1 blok tamamlanan gün oranı (activeDays / 14)           |
+| `goodSleep*` / `badSleep*`  | Uyku durumuna göre tamamlama ve stres korelasyonu                          |
 | `totalSubmissions`          | Toplam checklist gönderim sayısı                                           |
 
 ---
@@ -833,10 +964,10 @@ Sistemin ürettiği aktif uyarı ve öneri mesajlarını listeler.
 
 ## System Feedback (`GET /system-feedback/message`)
 
-Sistemin kullanıcıya gönderdiği AI destekli mesajlar. **Ders programını etkilemez.**
+Sistemin kullanıcıya gönderdiği kural tabanlı mesajlar, AI özeti ve sınav sonucu hatırlatması. Bazı mesajlar `suggestedConstraint` döndürebilir; kullanıcı onaylı constraint/override yazıldıysa controller fire-and-forget `planner.recalculate()` tetikler.
 
 Algoritma çalışırken ve kullanıcı takibinden toplanan veriler bir prompt'a derlenir,
-Claude Haiku bu verilere bakarak Türkçe motive edici / uyarıcı bir metin üretir.
+OpenRouter Chat Completions bu verilere bakarak kısa, motive edici / uyarıcı bir metin üretir. `OPENROUTER_API_KEY` yoksa AI metni boş döner, kural tabanlı mesajlar çalışmaya devam eder.
 
 ### Veri Kaynakları (prompt'a giden)
 
@@ -857,7 +988,20 @@ Ders durumu:
 
 Geçmiş:
   weekloadFeedback   → kullanıcının geçen haftaki değerlendirmesi
+  insightAnswers     → kullanıcının önceki insight sorularına verdiği cevaplar
+  examResults        → sınav sonucu girilip girilmediği / memnuniyet sinyali
 ```
+
+## AI Coach (`POST /ai-coach/*`)
+
+`ai-coach` system-feedback'ten ayrıdır. Grade modalında "No" ve bir neden seçildiğinde beklenen akış:
+
+```
+POST /lesson/:id/exam-result
+POST /ai-coach/exam-result/:examResultId/coach-message
+```
+
+Log prefix'i `[AC]` olur; `[SF] AI: bos` grade sonrası coach mesajının başarısız olduğu anlamına gelmez. Sınav sonucu coach mesajı OpenRouter boş dönerse backend yerel fallback mesajı üretir.
 
 ### Tetikleyici Durumlar (prompt context'e eklenir)
 
@@ -936,7 +1080,7 @@ Garanti: toplam her zaman hedef değere eşittir.
 
 1. **Tüm süre matematiği blok cinsindendir.** Ondalıklı blok yoktur; `Math.floor` veya `largestRemainder` kullanılır.
 2. **KRİTİK öncelik diğer tüm kurallara karşı kazanır.**
-3. **Her modül kendi klasöründe bağımsızdır:** `auth`, `user`, `planner`, `checklist`, `feedback`, `system-feedback`, `lesson`, `prisma`, `debug`, `utils`.
+3. **Her modül kendi klasöründe bağımsızdır:** `auth`, `user`, `planner`, `checklist`, `feedback`, `system-feedback`, `ai-coach`, `user-constraint`, `lesson`, `prisma`, `debug`, `utils`.
 4. **Algoritma adımları `planner/algorithm/` altında ayrı dosyalardadır** (step0 … step9).
 5. **Her service'teki fonksiyona açıklama satırı yazılır.**
 6. **Tüm zaman operasyonları `getCurrentTime()` ile yapılır**, `new Date()` doğrudan kullanılmaz.
