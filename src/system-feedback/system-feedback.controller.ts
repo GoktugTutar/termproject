@@ -7,10 +7,10 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 
 class SaveInsightAnswerDto {
   @IsString()
-  questionType: string;
+  questionType!: string;
 
   @IsString()
-  answer: string;
+  answer!: string;
 
   @IsOptional()
   @IsInt()

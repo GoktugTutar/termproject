@@ -5,7 +5,7 @@ import { buildCoachPrompt } from './prompts/coach.prompt';
 import { buildExamResultPrompt } from './prompts/exam-result.prompt';
 import { getCurrentTime } from '../utils/time.util';
 
-const OPENROUTER_MODEL = 'baidu/cobuddy:free';
+const OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 @Injectable()
