@@ -17,6 +17,62 @@ import {
   DEFAULT_CONSTRAINT_CONFIG,
   buildConstraintConfig,
 } from './algorithm/constraint-config';
+import { ScheduleQuality } from './algorithm/step8-placement';
+
+export interface PlanFeedback {
+  type: 'warning' | 'info' | 'positive';
+  message: string;
+}
+
+/**
+ * Produces a single plain-English feedback message based on plan quality metrics.
+ * Priority: fitRate → combo(timing+dayMatch) → dayMatchRate → positive → null.
+ * No DB access — pure computation from step8 output.
+ */
+function buildPlanFeedback(quality: ScheduleQuality, totalPlaced: number): PlanFeedback | null {
+  const { fitRate, timingRate, dayMatchRate, qualityScore } = quality;
+
+  // fitRate = 1 and nothing placed → totalRequested was 0 (no lessons), nothing to say.
+  // fitRate < 1 and nothing placed → lessons existed but couldn't fit → still show warning.
+  if (totalPlaced === 0 && fitRate >= 1) return null;
+
+  // 1. fitRate < 0.70 — blocks couldn't be scheduled (most critical)
+  if (fitRate < 0.70) {
+    const missed = Math.round((1 - fitRate) * 100);
+    return {
+      type: 'warning',
+      message: `${missed}% of your planned blocks didn't fit this week. Those lessons won't appear in the schedule — an unexpected gap may form.`,
+    };
+  }
+
+  // 2. qualityScore >= 0.80 — everything came together well (early exit before individual checks)
+  // Also handles edge cases like no lessons placed (timingRate/dayMatchRate = 0 but qualityScore = 1).
+  if (qualityScore >= 0.80) {
+    return {
+      type: 'positive',
+      message: `All blocks fit into the week and most landed in your preferred study hours — the schedule came together cleanly.`,
+    };
+  }
+
+  // 3. timingRate + dayMatchRate both off — combo is harder than either alone
+  if (timingRate < 0.60 && dayMatchRate < 0.45) {
+    const outsidePct = Math.round((1 - timingRate) * 100);
+    return {
+      type: 'warning',
+      message: `${outsidePct}% of your blocks fall outside your preferred study hours, and your harder lessons landed on your busiest days. Both at once can make the week noticeably more draining — planned breaks will help.`,
+    };
+  }
+
+  // 4. dayMatchRate < 0.45 — hard lessons on tiring days
+  if (dayMatchRate < 0.45) {
+    return {
+      type: 'info',
+      message: `Your harder lessons mostly landed on your busiest days. Energy tends to be lower on those days — expect to need a bit more mental effort for those sessions.`,
+    };
+  }
+
+  return null;
+}
 
 type CreateWeeklyPlanOptions = {
   fromDate?: Date;
@@ -345,8 +401,12 @@ export class PlannerService {
       });
     }
 
+    const totalPlacedBlocks = [...lessonPlaced, ...reviewPlaced].reduce((s, b) => s + (b.blockCount ?? 1), 0);
+    const planFeedback = buildPlanFeedback(quality, totalPlacedBlocks);
+    console.log(`[P] planFeedback: ${planFeedback ? `${planFeedback.type} — ${planFeedback.message.substring(0, 60)}...` : 'null'}`);
+
     const weekBlocks = await this.getWeekBlocks(userId, now);
-    return { ...weekBlocks, programScore, programLevel, forcedBlocks, unplacedLessonIds, quality };
+    return { ...weekBlocks, programScore, programLevel, forcedBlocks, unplacedLessonIds, quality, planFeedback };
   }
 
   async getWeekBlocks(userId: number, forDate?: Date) {
