@@ -130,7 +130,6 @@ function scoreCandidate(
   lessonClass: LessonClass,
   preferredRange: { start: number; end: number },
   dayClass: DayClass,
-  agirYorucuPenalty: number = -20,
 ): number {
   let score = 0;
 
@@ -156,8 +155,7 @@ function scoreCandidate(
 
   if (lessonClass === 'HAFIF' && overlapRatio === 0) score += 5;
   if (lessonClass === 'AGIR'  && dayClass === 'rahat')  score += 15;
-  // Mevcut -20 ceza ConstraintConfig'den gelir; kullanıcı override etmediyse -20 kalır
-  if (lessonClass === 'AGIR'  && dayClass === 'yorucu') score += agirYorucuPenalty;
+  if (lessonClass === 'AGIR'  && dayClass === 'yorucu') score -= 20;
 
   return score;
 }
@@ -189,14 +187,13 @@ function placeIntoWindows(
   lessonClass: LessonClass,
   dayClass: DayClass,
   wave: 1 | 2 | 3 | 4 | 5,
-  agirYorucuPenalty: number = -20,
 ): boolean {
   const candidates = generateCandidates(windows, neededMin);
   if (candidates.length === 0) return false;
 
   const scored = candidates.map((c) => ({
     ...c,
-    score: scoreCandidate(c.startMin, c.endMin, lessonClass, preferredRange, dayClass, agirYorucuPenalty),
+    score: scoreCandidate(c.startMin, c.endMin, lessonClass, preferredRange, dayClass),
   }));
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0];
@@ -369,7 +366,7 @@ interface PlacementResult {
 // allowConsecutive  : AGIR art arda kısıtı görmezden gel
 // allowSessionOverflow: maxSessions sınırını aş
 // stepDownToPlace   : pencereye sığmıyorsa toPlace'i 1'e kadar azaltarak dene
-// constraintConfig  : kullanıcı tercihleri (allowConsecutiveAgir, slottedModeDisabled, agirYorucuPenalty)
+// constraintConfig  : kullanıcı tercihleri (allowConsecutiveAgir, slottedModeDisabled)
 // preferredRangeByDate: gün bazlı tercih saati override haritası
 function runWave(
   wave: 1 | 2 | 3 | 4 | 5,
@@ -461,14 +458,14 @@ function runWave(
 
         if (stepDownToPlace) {
           for (let tp = maxToPlace; tp >= 1; tp--) {
-            if (placeIntoWindows(windows, tp * 30, dayRange, lessonId, day, tp, placed, lessonClass, dayClass, wave, constraintConfig.agirYorucuPenalty)) {
+            if (placeIntoWindows(windows, tp * 30, dayRange, lessonId, day, tp, placed, lessonClass, dayClass, wave)) {
               placedOk = true;
               actualToPlace = tp;
               break;
             }
           }
         } else {
-          placedOk = placeIntoWindows(windows, maxToPlace * 30, dayRange, lessonId, day, maxToPlace, placed, lessonClass, dayClass, wave, constraintConfig.agirYorucuPenalty);
+          placedOk = placeIntoWindows(windows, maxToPlace * 30, dayRange, lessonId, day, maxToPlace, placed, lessonClass, dayClass, wave);
         }
 
         freeWindows[dateStr] = windows.filter((w) => w.end > w.start);
@@ -570,7 +567,7 @@ export function step8Placement(
         let placedOk = false;
         let actualToPlace = maxToPlace;
         for (let tp = maxToPlace; tp >= 1; tp--) {
-          if (placeIntoWindows(windows, tp * 30, dayRange, lessonId, day, tp, placed, lessonClass, dayClass, 5, constraintConfig.agirYorucuPenalty)) {
+          if (placeIntoWindows(windows, tp * 30, dayRange, lessonId, day, tp, placed, lessonClass, dayClass, 5)) {
             placedOk = true;
             actualToPlace = tp;
             break;

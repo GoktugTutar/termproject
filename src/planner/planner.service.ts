@@ -211,7 +211,7 @@ export class PlannerService {
 
     // Aktif kullanıcı tercihlerini yükle (kayıt yoksa DEFAULT döner)
     const constraintConfig = await this.loadConstraintConfig(userId, now);
-    console.log(`[P] constraints: consecAgir=${constraintConfig.allowConsecutiveAgir} slottedOff=${constraintConfig.slottedModeDisabled} yorucuPen=${constraintConfig.agirYorucuPenalty} endH=${constraintConfig.studyEndHour ?? 24} startH=${constraintConfig.studyStartHour ?? 8} dayOverrides=${Object.keys(constraintConfig.dayStudyTimeOverrides).length}`);
+    console.log(`[P] constraints: consecAgir=${constraintConfig.allowConsecutiveAgir} slottedOff=${constraintConfig.slottedModeDisabled} endH=${constraintConfig.studyEndHour ?? 24} startH=${constraintConfig.studyStartHour ?? 8} dayOverrides=${Object.keys(constraintConfig.dayStudyTimeOverrides).length}`);
 
     const partialStart = options.fromDate ? this.startOfLocalDay(options.fromDate) : null;
 

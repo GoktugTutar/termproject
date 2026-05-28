@@ -11,7 +11,6 @@ export class UserConstraintService {
   private readonly VALID_TYPES = [
     'allow_consecutive_agir',
     'disable_slotted_mode',
-    'reduce_yorucu_penalty',
     'study_end_hour',
     'study_start_hour',
     'day_study_time',

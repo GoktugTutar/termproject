@@ -7,9 +7,6 @@ export interface ConstraintConfig {
   allowConsecutiveAgir: boolean;
   slottedModeDisabled: boolean;
 
-  // Scoring tarafı — AGIR + yorucu gün cezası (mevcut: -20)
-  agirYorucuPenalty: number;
-
   // freeWindows preprocessing — null = mevcut davranış (24:00 / 08:00)
   studyEndHour: number | null;
   studyStartHour: number | null;
@@ -22,7 +19,6 @@ export interface ConstraintConfig {
 export const DEFAULT_CONSTRAINT_CONFIG: ConstraintConfig = {
   allowConsecutiveAgir: false,
   slottedModeDisabled: false,
-  agirYorucuPenalty: -20,
   studyEndHour: null,
   studyStartHour: null,
   dayStudyTimeOverrides: {},
@@ -60,14 +56,6 @@ export function buildConstraintConfig(
       case 'disable_slotted_mode':
         config.slottedModeDisabled = true;
         break;
-
-      case 'reduce_yorucu_penalty': {
-        const penalty = Number(params.penalty);
-        if (!Number.isNaN(penalty) && penalty <= 0 && penalty >= -30) {
-          config.agirYorucuPenalty = penalty;
-        }
-        break;
-      }
 
       case 'study_end_hour': {
         const hour = Number(params.hour);

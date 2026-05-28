@@ -300,8 +300,6 @@ export class SystemFeedbackService {
 
         const suggestedConstraint: (typeof messages)[0]['suggestedConstraint'] = asiriYukFired
           ? { kind: 'bool', type: 'allow_consecutive_agir', question: 'Zor dersleri art arda gruplayalım mı?' }
-          : yorucuDayCompletion >= 0.6
-          ? { kind: 'bool', type: 'reduce_yorucu_penalty', question: 'Yoğun günlere de zor ders ekleyelim mi?' }
           : undefined;
 
         messages.push({
