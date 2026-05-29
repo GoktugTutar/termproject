@@ -68,31 +68,44 @@ export class ChecklistService {
   // ── Sabah uyku sorusu ────────────────────────────────────────────────────
 
   /** Bugün sleptWell dolu mu? (sabah card gösterilecek mi?) */
-  async getSleepStatus(userId: number): Promise<{ asked: boolean }> {
+  async getSleepStatus(
+    userId: number,
+  ): Promise<{ asked: boolean; date: string; sleptWell: boolean | null }> {
     const today = this.startOfLocalDay(getCurrentTime());
     const tomorrow = this.nextLocalDay(today);
 
     const checklist = await this.prisma.dailyChecklist.findFirst({
-      where: { userId, date: { gte: today, lt: tomorrow } },
+      where: {
+        userId,
+        date: { gte: today, lt: tomorrow },
+        sleptWell: { not: null },
+      },
       select: { sleptWell: true },
+      orderBy: { id: 'desc' },
     });
 
-    // Checklist yoksa veya sleptWell null ise henüz sorulmamış
-    return { asked: checklist?.sleptWell !== null && checklist?.sleptWell !== undefined };
+    return {
+      asked: checklist?.sleptWell !== null && checklist?.sleptWell !== undefined,
+      date: this.toLocalDateStr(today),
+      sleptWell: checklist?.sleptWell ?? null,
+    };
   }
 
   /** Sabah: sadece uyku cevabını kaydet, checklist yoksa oluştur */
-  async submitSleep(userId: number, sleptWell: boolean): Promise<void> {
+  async submitSleep(
+    userId: number,
+    sleptWell: boolean,
+  ): Promise<{ asked: boolean; date: string; sleptWell: boolean }> {
     const today = this.startOfLocalDay(getCurrentTime());
     const tomorrow = this.nextLocalDay(today);
 
-    const existing = await this.prisma.dailyChecklist.findFirst({
+    const existingCount = await this.prisma.dailyChecklist.count({
       where: { userId, date: { gte: today, lt: tomorrow } },
     });
 
-    if (existing) {
-      await this.prisma.dailyChecklist.update({
-        where: { id: existing.id },
+    if (existingCount > 0) {
+      await this.prisma.dailyChecklist.updateMany({
+        where: { userId, date: { gte: today, lt: tomorrow } },
         data: { sleptWell },
       });
     } else {
@@ -102,6 +115,7 @@ export class ChecklistService {
     }
 
     console.log(`[SLEEP] userId=${userId} date=${this.toLocalDateStr(today)} sleptWell=${sleptWell}`);
+    return { asked: true, date: this.toLocalDateStr(today), sleptWell };
   }
 
   // ── Günlük checklist ─────────────────────────────────────────────────────
