@@ -5,6 +5,7 @@ export interface CoachPromptInput {
     consistencyScore: number;
     stressNearExam: number;
     hasUpcomingExam: boolean;
+    dowCompletionRates?: number[]; // Mon=0..Sun=6
   } | null;
   upcomingExams: Array<{
     lessonName: string;
@@ -27,6 +28,7 @@ export interface CoachPromptInput {
     goodSleepAvgStress: number | null;
     badSleepAvgStress: number | null;
   } | null;
+  insightAnswers?: Array<{ questionType: string; answer: string; lessonId?: number | null }>;
 }
 
 export function buildCoachPrompt(input: CoachPromptInput): string {
@@ -37,6 +39,7 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
   lines.push('No judgment or criticism. Write in English. Maximum 3 sentences. No bullet points.');
   lines.push('IMPORTANT: Do not suggest session lengths, scheduling, block placement, or timing — the planner handles that. Focus on mindset, awareness of risk, or one behavioural nudge.');
   lines.push('');
+
   // Profile
   if (input.profile) {
     const p = input.profile;
@@ -55,6 +58,24 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
         lines.push(`  → Current stress is in line with their typical exam-period level`);
       }
     }
+
+    // Day-of-week pattern — only surface if meaningful data exists
+    if (p.dowCompletionRates && p.dowCompletionRates.length === 7) {
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const weakDays = p.dowCompletionRates
+        .map((r, i) => ({ day: dayNames[i], rate: r }))
+        .filter(d => d.rate > 0 && d.rate < 0.5)
+        .map(d => `${d.day} (${Math.round(d.rate * 100)}%)`)
+        .join(', ');
+      const strongDays = p.dowCompletionRates
+        .map((r, i) => ({ day: dayNames[i], rate: r }))
+        .filter(d => d.rate >= 0.8)
+        .map(d => `${d.day} (${Math.round(d.rate * 100)}%)`)
+        .join(', ');
+      if (weakDays) lines.push(`- Consistently weaker days: ${weakDays}`);
+      if (strongDays) lines.push(`- Consistently stronger days: ${strongDays}`);
+    }
+
     lines.push('');
   }
 
@@ -118,6 +139,15 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
       }
       lines.push('');
     }
+  }
+
+  // Previous insight answers
+  if (input.insightAnswers && input.insightAnswers.length > 0) {
+    lines.push('Student\'s recent answers to insight questions (use to personalise your message):');
+    for (const a of input.insightAnswers) {
+      lines.push(`- [${a.questionType}] Answer: "${a.answer}"`);
+    }
+    lines.push('');
   }
 
   lines.push('Based on the data above, write a short coaching message for the student for today.');

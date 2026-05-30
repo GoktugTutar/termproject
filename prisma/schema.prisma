@@ -34,6 +34,7 @@ model User {
   constraints          UserConstraint[]
   insightAnswers       InsightAnswer[]
   dailyNotes           DailyNote[]
+  aiMessageCache  AIMessageCache?
 }
 
 model StudentProfile {
@@ -275,4 +276,11 @@ model DailyNote {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+model AIMessageCache {
+  userId    Int      @id
+  message   String
+  updatedAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
 }

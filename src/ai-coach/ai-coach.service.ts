@@ -227,6 +227,14 @@ export class AiCoachService {
           }
         : null;
 
+    const insightAnswers = await this.prisma.insightAnswer.findMany({
+      where: {
+        userId,
+        createdAt: { gte: new Date(getCurrentTime().getTime() - 14 * 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
     const prompt = buildCoachPrompt({
       profile: profile
         ? {
@@ -235,6 +243,9 @@ export class AiCoachService {
             consistencyScore: profile.consistencyScore,
             stressNearExam: profile.stressNearExam,
             hasUpcomingExam: upcomingExams.length > 0,
+            dowCompletionRates: profile.dowCompletionRates
+              ? JSON.parse(profile.dowCompletionRates as string)
+              : undefined,
           }
         : null,
       upcomingExams,
@@ -242,6 +253,11 @@ export class AiCoachService {
       thisWeekBlocks: [...blockMap.values()],
       delayedLessons,
       sleepMetrics,
+      insightAnswers: insightAnswers.map((a) => ({
+        questionType: a.questionType,
+        answer: a.answer,
+        lessonId: a.lessonId ?? null,
+      })),
     });
 
     const message = await this.callAi(prompt, 'dailyCoach');

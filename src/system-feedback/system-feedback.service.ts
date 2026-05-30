@@ -18,13 +18,7 @@ export class SystemFeedbackService {
       | { kind: 'hour_end' | 'hour_start'; type: string; question: string; options: number[] }
       | { kind: 'time_of_day'; type: string; question: string; dayOfWeek: number; dayName: string };
 
-    const messages: Array<{
-      type: string;
-      message: string;
-      suggestion: string;
-      confidence?: number;
-      suggestedConstraint?: SuggestedConstraint;
-    }> = [];
+    const messages: Array<{ type: string; category: string; message: string; suggestion: string; confidence?: number; suggestedConstraint?: any; insightQuestion?: any }> = [];
     const examResultReminderLessons: string[] = [];
     let overridesWritten = 0;
 
@@ -114,9 +108,16 @@ export class SystemFeedbackService {
             console.log(`[SF] ✓ sure_isteme_ama_tamamlayamama -> ${lesson.name} (completion=%${Math.round(lessonCompletion * 100)} confidence=${Math.round(confidence * 100)}%)`);
             messages.push({
               type: 'sure_isteme_ama_tamamlayamama',
+            category: 'weekly',
               message: `You requested more time for ${lesson.name}, but completion is still at ${Math.round(lessonCompletion * 100)}% — extra blocks have been added but aren't being finished.`,
               suggestion: `More time alone may not be the issue — difficulty or focus could be the real barrier. The extra blocks are there; try starting with just one.`,
               confidence,
+              insightQuestion: {
+                type: 'sure_isteme_ama_tamamlayamama',
+                lessonId: lesson.id,
+                question: `${lesson.name} için ekstra süreler neden tamamlanamadı?`,
+                options: ['Ders çok zor geliyor', 'Odaklanmakta zorlanıyorum', 'Bloklar uygun zamanda değil', 'Diğer dersler önce geldi'],
+              },
             });
             await this.logFeedback(userId, 'sure_isteme_ama_tamamlayamama', lf.lessonId);
           } else {
@@ -160,9 +161,16 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ sinav_az_calisma -> ${lesson.name} (${daysLeft}g kaldi, %${Math.round(completionRate * 100)} tamamlandi confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'sinav_az_calisma',
+            category: 'critical',
             message: `${lesson.name} exam is ${daysLeft} days away, but most sessions are incomplete — this lesson is at risk.`,
             suggestion: 'Prioritise this lesson in the remaining days.',
             confidence,
+            insightQuestion: {
+              type: 'sinav_az_calisma',
+              lessonId: lesson.id,
+              question: `${lesson.name} için sınav hazırlığını zorlaştıran ne?`,
+              options: ['Konuyu anlamakta güçlük çekiyorum', 'Zaman bulamıyorum', 'Motivasyon sorunu', 'Diğer dersler önce geliyor'],
+            },
           });
           await this.logFeedback(userId, 'sinav_az_calisma', lesson.id);
           await this.writeReviewBlockOverride(userId, lesson.id, weekStart);
@@ -186,6 +194,7 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ sinav_az_blok -> ${lesson.name} (${daysLeft}g kaldi, ${allocatedBlocks} blok confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'sinav_az_blok',
+            category: 'critical',
             message: `${lesson.name} exam is ${daysLeft} days away, but only ${allocatedBlocks} block(s) could be allocated this week.`,
             suggestion:
               allocatedBlocks === 0
@@ -218,6 +227,7 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ asiri_yuk (repeatWeeks=${repeatWeeks} confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'asiri_yuk',
+            category: 'weekly',
             message: 'Your schedule has felt too heavy for two weeks in a row. Next week has been automatically lightened by 15%.',
             suggestion: 'Consider reviewing your busy-time slots.',
             confidence,
@@ -242,6 +252,7 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ sik_erteleme -> ${lesson.name} (${lesson.keyfiDelayCount}x confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'sik_erteleme',
+            category: 'semi_frequent',
             message: `${lesson.name} has been delayed multiple times — the planner has switched it to slot mode.`,
             suggestion:
               'The planner has switched this lesson to slot mode — it now gets a guaranteed spot every few days instead of being scheduled flexibly. Try to complete at least one of those fixed sessions this week.',
@@ -304,10 +315,16 @@ export class SystemFeedbackService {
 
         messages.push({
           type: 'yuksek_stres',
+            category: 'daily',
           message: 'Your stress level has been high (≥4) for 3 days in a row.',
           suggestion: 'Consider reviewing your workload or planning a lighter week.',
           confidence,
           ...(suggestedConstraint ? { suggestedConstraint } : {}),
+          insightQuestion: {
+            type: 'yuksek_stres',
+            question: 'Bu stres daha çok nereden geliyor?',
+            options: ['Ders yükü çok fazla', 'Sınav kaygısı', 'Kişisel/dış etkenler', 'Bilmiyorum'],
+          },
         });
         await this.logFeedback(userId, 'yuksek_stres');
       } else {
@@ -333,6 +350,7 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ hareketsizlik (confidence=${Math.round(confidence * 100)}%)`);
         messages.push({
           type: 'hareketsizlik',
+            category: 'daily',
           message: 'No study blocks have been completed in the last 2 days.',
           suggestion: 'Try starting with a short session today — even 30 minutes makes a difference.',
           confidence,
@@ -341,6 +359,11 @@ export class SystemFeedbackService {
             type: 'study_start_hour',
             question: 'Bloklar çok erken mi başlıyor? Ne zaman çalışabilirsin?',
             options: [9, 10, 11, 12],
+          },
+          insightQuestion: {
+            type: 'hareketsizlik',
+            question: 'Son 2 günde çalışmayı ne engelledi?',
+            options: ['Motivasyon eksikliği', 'Zaman bulamadım', 'Kendimi iyi hissetmedim', 'Başka şeyler önce geldi'],
           },
         });
         await this.logFeedback(userId, 'hareketsizlik');
@@ -390,6 +413,7 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ sinav_yogunlugu_kritik (confidence=${Math.round(confidence * 100)}%)`);
         messages.push({
           type: 'sinav_yogunlugu_kritik',
+            category: 'critical',
           message: `Critical exam week ahead: ${examList}. These are very close — now is the time to focus.`,
           suggestion: 'Your exam lessons are the priority right now. Everything else can wait.',
           confidence,
@@ -409,6 +433,7 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ sinav_yogunlugu_yogun (confidence=${Math.round(confidence * 100)}%)`);
         messages.push({
           type: 'sinav_yogunlugu_yogun',
+            category: 'semi_frequent',
           message: `A heavy week is coming up: ${examList}. Time to shift focus toward your exam lessons.`,
           suggestion: 'Give extra attention to your exam lessons this week — other topics can stay light.',
           confidence,
@@ -427,6 +452,7 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ sinav_yogunlugu_orta (confidence=${Math.round(confidence * 100)}%)`);
         messages.push({
           type: 'sinav_yogunlugu_orta',
+            category: 'weekly',
           message: `You have ${upcomingExams.length} exam(s) coming up this week. Start preparing now if you haven't already.`,
           suggestion: 'A bit of extra focus on your exam lessons now will make a real difference later.',
           confidence,
@@ -464,6 +490,7 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ program_yogunlugu_asim (%${Math.round((capacityRatio - 1) * 100)} fazla confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'program_yogunlugu_asim',
+            category: 'weekly',
             message: `Next week's schedule is ${Math.round((capacityRatio - 1) * 100)}% above your recent average capacity — some blocks may go unfinished.`,
             suggestion: 'This is a heads-up, not a change. If the week feels too heavy, your feedback after it will help the system adjust.',
             confidence,
@@ -482,6 +509,7 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ program_yogunlugu_dusuk (confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'program_yogunlugu_dusuk',
+            category: 'weekly',
             message: "Next week looks lighter than usual — a good window to catch up on anything you've fallen behind on.",
             suggestion: 'Light weeks are valuable. Use the extra headroom to consolidate rather than coast.',
             confidence,
@@ -508,12 +536,13 @@ export class SystemFeedbackService {
         // Combined signals = higher confidence than either alone
         const baseConf = Math.max(
           messages.find((m) => m.type === 'yuksek_stres')?.confidence ?? 0.5,
-          messages.find((m) => hasYogunHafta)?.confidence ?? 0.5,
+          messages.find((m) => m.type === 'sinav_yogunlugu_kritik' || m.type === 'sinav_yogunlugu_yogun' || m.type === 'program_yogunlugu_asim')?.confidence ?? 0.5,
         );
         const confidence = Math.min(1, baseConf + 0.15);
         console.log(`[SF] ✓ kombine_yogun_stres (confidence=${Math.round(confidence * 100)}%)`);
         messages.push({
           type: 'kombine_yogun_stres',
+            category: 'daily',
           message: 'Your schedule is heavy and your stress is high at the same time. This combination can seriously hurt your learning.',
           suggestion: "Shorten today's study blocks — rescheduling is critical.",
           confidence,
@@ -533,6 +562,7 @@ export class SystemFeedbackService {
         console.log(`[SF] ✓ kombine_yogun_erteleme (confidence=${Math.round(confidence * 100)}%)`);
         messages.push({
           type: 'kombine_yogun_erteleme',
+            category: 'weekly',
           message: 'A heavy week is ahead and your delay rate has historically increased under this kind of load.',
           suggestion: 'The planner is already aware of this pattern — it has prioritised your delayed lessons. Try to honour at least one session for each.',
           confidence,
@@ -595,6 +625,7 @@ export class SystemFeedbackService {
           console.log(`[SF] ✓ dusuk_uyku_stres (badSleep=${badSleepDays.length}/3 stress=${avgStress.toFixed(1)} goodComp=${goodComp?.toFixed(2) ?? '-'} badComp=${badComp?.toFixed(2) ?? '-'} confidence=${Math.round(confidence * 100)}%)`);
           messages.push({
             type: 'dusuk_uyku_stres',
+            category: 'daily',
             message,
             suggestion,
             confidence,
@@ -633,6 +664,7 @@ export class SystemFeedbackService {
             console.log(`[SF] ✓ dow_dusuk_completion -> ${dayNames[i]} (${(dowRates[i] * 100).toFixed(0)}% confidence=${Math.round(confidence * 100)}%)`);
             messages.push({
               type: 'dow_dusuk_completion',
+            category: 'weekly',
               message: `${dayNames[i]} sessions are consistently incomplete — completion is at ${Math.round(dowRates[i] * 100)}%.`,
               suggestion: `Try a different time slot on ${dayNames[i]} — your current preferred time may not suit this day.`,
               confidence,
@@ -660,9 +692,27 @@ export class SystemFeedbackService {
     console.log(`[SF] SONUC: ${messages.length} mesaj → [${messages.map((m) => m.type).join(', ')}]`);
 
     const insightAnswers = await this.getRecentInsightAnswers(userId);
-    const aiMessage = await this.buildAiMessage(messages, profile, lastFeedback?.weekloadFeedback ?? null, insightAnswers);
+    let aiMessage = await this.buildAiMessage(messages, profile, lastFeedback?.weekloadFeedback ?? null, insightAnswers);
+
+    if (aiMessage) {
+      await this.prisma.aIMessageCache.upsert({
+        where: { userId },
+        update: { message: aiMessage, updatedAt: getCurrentTime() },
+        create: { userId, message: aiMessage, updatedAt: getCurrentTime() },
+      });
+      console.log(`[SF] AI: uretildi + cache yazildi`);
+    } else {
+      const cacheExpiry = new Date(getCurrentTime().getTime() - 24 * 60 * 60 * 1000);
+      const cached = await this.prisma.aIMessageCache.findUnique({ where: { userId } });
+      if (cached?.message && cached.updatedAt > cacheExpiry) {
+        aiMessage = cached.message;
+        console.log(`[SF] AI: cache okundu`);
+      } else {
+        console.log(`[SF] AI: bos`);
+      }
+    }
+
     const examResultMessage = this.buildExamResultReminderMessage(examResultReminderLessons);
-    console.log(`[SF] AI: ${aiMessage ? 'uretildi' : 'bos'}`);
     return { messages, aiMessage, examResultMessage, overridesWritten };
   }
 

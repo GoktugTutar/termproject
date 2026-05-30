@@ -1,4 +1,5 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -13,7 +14,8 @@ export class AuthController {
     return this.authService.register(dto.email, dto.password);
   }
 
-  // Kullanıcı girişi
+  // Kullanıcı girişi - brute-force koruması: 60 saniyede max 5 deneme
+  @UseGuards(ThrottlerGuard)
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
