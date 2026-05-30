@@ -68,12 +68,20 @@ export class UserService {
   }
 
   async setup(userId: number, dto: SetupUserDto) {
-    const { busySlots, academicTerm, ...rest } = dto;
+    const { busySlots, academicTerm, weeklyStudyHours, ...rest } = dto;
+
+    const weeklyStudyBlocks = weeklyStudyHours !== undefined
+      ? weeklyStudyHours * 2
+      : undefined;
 
     // User alanlarını güncelle (gradeLevel, gpa, academicTerm, studyPrefs dahil)
     await this.prisma.user.update({
       where: { id: userId },
-      data: { ...rest, ...(academicTerm !== undefined ? { academicTerm } : {}) },
+      data: {
+        ...rest,
+        ...(academicTerm !== undefined ? { academicTerm } : {}),
+        ...(weeklyStudyBlocks !== undefined ? { weeklyStudyBlocks } : {}),
+      },
     });
 
     // academicTerm varsa aktif dönemin adını da güncelle

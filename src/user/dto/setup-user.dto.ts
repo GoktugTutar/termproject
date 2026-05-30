@@ -72,6 +72,12 @@ export class SetupUserDto {
   academicTerm?: string;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(70)
+  weeklyStudyHours?: number;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BusySlotDto)
