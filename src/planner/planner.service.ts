@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { getCurrentTime } from '../utils/time.util';
+import { isFirstWeekDate } from '../utils/first-week.util';
 import { step0Burnout } from './algorithm/step0-burnout';
 import { step1Multiplier } from './algorithm/step1-multiplier';
 import { step2Pool } from './algorithm/step2-pool';
@@ -237,12 +238,12 @@ export class PlannerService {
       const dayBusySlots = user.busySlots.filter((s) => this.busySlotAppliesToDate(s, date, dayOfWeek));
       return { date, dayOfWeek, busySlots: dayBusySlots };
     });
-    // Geçmiş günlere blok yazılmaz: her zaman en erken bugün'den başla.
-    // partialStart verilmişse onunla bugünün maksimumunu kullan.
     const todayStart = this.startOfLocalDay(now);
+    // İlk haftada tüm hafta (Pazartesi–Pazar) planlanır; geçmiş günler de dahil edilir.
+    const firstWeek = !partialStart && isFirstWeekDate(user.currentTermStartedAt, now);
     const effectiveStart = partialStart
       ? new Date(Math.max(partialStart.getTime(), todayStart.getTime()))
-      : todayStart;
+      : firstWeek ? weekStart : todayStart;
     const planningDays = weekDays.filter(
       (day) => day.date.getTime() >= effectiveStart.getTime(),
     );
