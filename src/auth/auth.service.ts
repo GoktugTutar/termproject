@@ -11,13 +11,14 @@ export class AuthService {
   ) {}
 
   // Kayıt: email/şifre hash'le, user oluştur, token döndür
-  async register(email: string, password: string) {
+  async register(email: string, password: string, weeklyStudyHours?: number) {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('E-posta zaten kayıtlı');
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const weeklyStudyBlocks = weeklyStudyHours ? weeklyStudyHours * 2 : 28;
     const user = await this.prisma.user.create({
-      data: { email, passwordHash },
+      data: { email, passwordHash, weeklyStudyBlocks },
     });
 
     return { access_token: this.jwtService.sign({ sub: user.id, email: user.email }) };

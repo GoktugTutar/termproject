@@ -10,7 +10,7 @@ export class AuthController {
   // Yeni kullanıcı kaydı
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto.email, dto.password);
+    return this.authService.register(dto.email, dto.password, dto.weeklyStudyHours);
   }
 
   // Kullanıcı girişi

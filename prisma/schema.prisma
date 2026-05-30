@@ -18,6 +18,7 @@ model User {
   gradeLevel           Int?
   gpa                  Float?
   academicTerm         String?
+  weeklyStudyBlocks    Int                  @default(28)
   avatarSvg            String?
   avatarOptions        Json?
   checklists           DailyChecklist[]

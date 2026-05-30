@@ -224,7 +224,7 @@ export class PlannerService {
     const defaultMaxBlocks = user.studyStyle === 'deep_focus' ? 4 : user.studyStyle === 'distributed' ? 2 : 3;
     const { maxBlocksPerSession } = step0Burnout(totalCompleted, totalPlanned, defaultMaxBlocks);
     const multiplier = step1Multiplier(lastFeedback?.weekloadFeedback ?? null);
-    const effectiveBlocks = step2Pool(multiplier);
+    const effectiveBlocks = step2Pool(multiplier, user.weeklyStudyBlocks ?? 28);
 
     console.log(`[P] plan userId=${userId} weekStart=${weekStart.toISOString().substring(0, 10)}`);
     console.log(`[P] completion=${totalCompleted}/${totalPlanned} feedback=${lastFeedback?.weekloadFeedback ?? 'yok'} multiplier=${multiplier} effectiveBlocks=${effectiveBlocks} maxBlocks=${maxBlocksPerSession}`);
