@@ -115,8 +115,8 @@ export class SystemFeedbackService {
               insightQuestion: {
                 type: 'sure_isteme_ama_tamamlayamama',
                 lessonId: lesson.id,
-                question: `${lesson.name} için ekstra süreler neden tamamlanamadı?`,
-                options: ['Ders çok zor geliyor', 'Odaklanmakta zorlanıyorum', 'Bloklar uygun zamanda değil', 'Diğer dersler önce geldi'],
+                question: `Why couldn't the extra time for ${lesson.name} be completed?`,
+                options: ['The subject is too difficult', 'I struggle to focus', 'Blocks are not at the right time', 'Other lessons took priority'],
               },
             });
             await this.logFeedback(userId, 'sure_isteme_ama_tamamlayamama', lf.lessonId);
@@ -168,8 +168,8 @@ export class SystemFeedbackService {
             insightQuestion: {
               type: 'sinav_az_calisma',
               lessonId: lesson.id,
-              question: `${lesson.name} için sınav hazırlığını zorlaştıran ne?`,
-              options: ['Konuyu anlamakta güçlük çekiyorum', 'Zaman bulamıyorum', 'Motivasyon sorunu', 'Diğer dersler önce geliyor'],
+              question: `What's making exam prep for ${lesson.name} difficult?`,
+              options: ["I'm struggling with the material", "I can't find the time", 'Motivation issues', 'Other lessons come first'],
             },
           });
           await this.logFeedback(userId, 'sinav_az_calisma', lesson.id);
@@ -260,7 +260,7 @@ export class SystemFeedbackService {
             suggestedConstraint: {
               kind: 'bool',
               type: 'disable_slotted_mode',
-              question: 'Slotlu modu kapatayım mı?',
+              question: 'Turn off slot mode?',
             },
           });
           await this.logFeedback(userId, 'sik_erteleme', lesson.id);
@@ -310,7 +310,7 @@ export class SystemFeedbackService {
         }
 
         const suggestedConstraint: (typeof messages)[0]['suggestedConstraint'] = asiriYukFired
-          ? { kind: 'bool', type: 'allow_consecutive_agir', question: 'Zor dersleri art arda gruplayalım mı?' }
+          ? { kind: 'bool', type: 'allow_consecutive_agir', question: 'Group difficult lessons back-to-back?' }
           : undefined;
 
         messages.push({
@@ -322,8 +322,8 @@ export class SystemFeedbackService {
           ...(suggestedConstraint ? { suggestedConstraint } : {}),
           insightQuestion: {
             type: 'yuksek_stres',
-            question: 'Bu stres daha çok nereden geliyor?',
-            options: ['Ders yükü çok fazla', 'Sınav kaygısı', 'Kişisel/dış etkenler', 'Bilmiyorum'],
+            question: 'Where is most of this stress coming from?',
+            options: ['Workload is too heavy', 'Exam anxiety', 'Personal / external factors', "I'm not sure"],
           },
         });
         await this.logFeedback(userId, 'yuksek_stres');
@@ -357,13 +357,13 @@ export class SystemFeedbackService {
           suggestedConstraint: {
             kind: 'hour_start',
             type: 'study_start_hour',
-            question: 'Bloklar çok erken mi başlıyor? Ne zaman çalışabilirsin?',
+            question: 'Are blocks starting too early? When can you study?',
             options: [9, 10, 11, 12],
           },
           insightQuestion: {
             type: 'hareketsizlik',
-            question: 'Son 2 günde çalışmayı ne engelledi?',
-            options: ['Motivasyon eksikliği', 'Zaman bulamadım', 'Kendimi iyi hissetmedim', 'Başka şeyler önce geldi'],
+            question: 'What got in the way of studying over the last 2 days?',
+            options: ['Lack of motivation', "Couldn't find the time", "Wasn't feeling well", 'Other things came first'],
           },
         });
         await this.logFeedback(userId, 'hareketsizlik');
@@ -632,7 +632,7 @@ export class SystemFeedbackService {
             suggestedConstraint: {
               kind: 'hour_end',
               type: 'study_end_hour',
-              question: 'Kaç\'a kadar çalışmak istersin?',
+              question: 'What time would you like to stop studying?',
               options: [20, 21, 22],
             },
           });
@@ -671,7 +671,7 @@ export class SystemFeedbackService {
               suggestedConstraint: {
                 kind: 'time_of_day',
                 type: 'day_study_time',
-                question: `${dayNames[i]} için farklı bir çalışma saati deneyelim mi?`,
+                question: `Try a different study time on ${dayNames[i]}?`,
                 dayOfWeek: dow,
                 dayName: dayNames[i],
               },
@@ -778,7 +778,8 @@ export class SystemFeedbackService {
 
   private async isOnCooldown(userId: number, type: string, lessonId?: number): Promise<boolean> {
     const hours = this.cooldownHours[type] ?? 48;
-    const since = new Date(getCurrentTime().getTime() - hours * 60 * 60 * 1000);
+    const now = process.env.MODE === 'test2sh' ? new Date() : getCurrentTime();
+    const since = new Date(now.getTime() - hours * 60 * 60 * 1000);
     const log = await this.prisma.systemFeedbackLog.findFirst({
       where: {
         userId,
@@ -796,7 +797,7 @@ export class SystemFeedbackService {
         userId,
         type,
         lessonId: lessonId ?? null,
-        triggeredAt: getCurrentTime(),
+        triggeredAt: process.env.MODE === 'test2sh' ? new Date() : getCurrentTime(),
       },
     });
   }
