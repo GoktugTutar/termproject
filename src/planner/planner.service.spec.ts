@@ -174,6 +174,34 @@ describe('PlannerService', () => {
     });
   });
 
+  it('creates a full current-week plan even when opened midweek', async () => {
+    const prisma = createPrismaMock();
+    const thursdayToSundayBusy = [4, 5, 6, 7].map((dayOfWeek) => ({
+      dayOfWeek,
+      isRoutine: true,
+      date: null,
+      startTime: '08:00',
+      endTime: '24:00',
+      fatigueLevel: 1,
+    }));
+    prisma.user.findUnique.mockResolvedValue({
+      ...createUser(),
+      busySlots: thursdayToSundayBusy,
+      lessons: [createLesson(7)],
+    });
+    prisma.scheduledBlock.findMany.mockResolvedValue([]);
+
+    const service = new PlannerService(prisma as any);
+    await service.createWeeklyPlan(1, new Date(2026, 4, 21, 10));
+
+    const todayStart = new Date(2026, 4, 21);
+    const createdDates = prisma.scheduledBlock.create.mock.calls.map(
+      ([call]) => call.data.date as Date,
+    );
+    expect(createdDates.length).toBeGreaterThan(0);
+    expect(createdDates.some((date) => date.getTime() < todayStart.getTime())).toBe(true);
+  });
+
   it('recalculates only today and future blocks', async () => {
     const prisma = createPrismaMock();
     prisma.scheduledBlock.findMany
