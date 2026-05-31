@@ -44,7 +44,10 @@ export class ChecklistService {
     return d;
   }
 
-  private async hasChecklistForDate(userId: number, date: Date): Promise<boolean> {
+  private async hasChecklistForDate(
+    userId: number,
+    date: Date,
+  ): Promise<boolean> {
     const nextDay = this.nextLocalDay(date);
     const count = await this.prisma.dailyChecklist.count({
       where: { userId, date: { gte: date, lt: nextDay } },
@@ -85,7 +88,8 @@ export class ChecklistService {
     });
 
     return {
-      asked: checklist?.sleptWell !== null && checklist?.sleptWell !== undefined,
+      asked:
+        checklist?.sleptWell !== null && checklist?.sleptWell !== undefined,
       date: this.toLocalDateStr(today),
       sleptWell: checklist?.sleptWell ?? null,
     };
@@ -114,7 +118,9 @@ export class ChecklistService {
       });
     }
 
-    console.log(`[SLEEP] userId=${userId} date=${this.toLocalDateStr(today)} sleptWell=${sleptWell}`);
+    console.log(
+      `[SLEEP] userId=${userId} date=${this.toLocalDateStr(today)} sleptWell=${sleptWell}`,
+    );
     return { asked: true, date: this.toLocalDateStr(today), sleptWell };
   }
 
@@ -141,7 +147,11 @@ export class ChecklistService {
 
     if (!checklist) {
       checklist = await this.prisma.dailyChecklist.create({
-        data: { userId, date: today, stressLevel: dto.stressLevel },
+        data: {
+          userId,
+          date: today,
+          stressLevel: dto.stressLevel,
+        },
         include: { items: true },
       });
     } else {
@@ -159,11 +169,17 @@ export class ChecklistService {
 
         const delayed = item.completedBlocks < item.plannedBlocks;
         // Review bloğu için delay sayacını değiştirme
-        const delayDelta = (item.isReview)
+        const delayDelta = item.isReview
           ? 0
           : existing
-            ? delayed === existing.delayed ? 0 : delayed ? 1 : -1
-            : delayed ? 1 : 0;
+            ? delayed === existing.delayed
+              ? 0
+              : delayed
+                ? 1
+                : -1
+            : delayed
+              ? 1
+              : 0;
 
         if (existing) {
           await this.prisma.checklistItem.update({
@@ -198,7 +214,11 @@ export class ChecklistService {
 
   async getHistory(userId: number, days: number) {
     const today = this.startOfLocalDay(getCurrentTime());
-    const result: { date: string; hasBlocks: boolean; hasChecklist: boolean }[] = [];
+    const result: {
+      date: string;
+      hasBlocks: boolean;
+      hasChecklist: boolean;
+    }[] = [];
 
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today);
@@ -206,11 +226,19 @@ export class ChecklistService {
       const nextDay = this.nextLocalDay(d);
 
       const [blockCount, checklistCount] = await Promise.all([
-        this.prisma.scheduledBlock.count({ where: { userId, date: { gte: d, lt: nextDay } } }),
-        this.prisma.dailyChecklist.count({ where: { userId, date: { gte: d, lt: nextDay } } }),
+        this.prisma.scheduledBlock.count({
+          where: { userId, date: { gte: d, lt: nextDay } },
+        }),
+        this.prisma.dailyChecklist.count({
+          where: { userId, date: { gte: d, lt: nextDay } },
+        }),
       ]);
 
-      result.push({ date: this.toLocalDateStr(d), hasBlocks: blockCount > 0, hasChecklist: checklistCount > 0 });
+      result.push({
+        date: this.toLocalDateStr(d),
+        hasBlocks: blockCount > 0,
+        hasChecklist: checklistCount > 0,
+      });
     }
 
     return result;
@@ -225,7 +253,10 @@ export class ChecklistService {
     });
   }
 
-  private async hasScheduledBlocksForDate(userId: number, date: Date): Promise<boolean> {
+  private async hasScheduledBlocksForDate(
+    userId: number,
+    date: Date,
+  ): Promise<boolean> {
     const nextDay = this.nextLocalDay(date);
     const count = await this.prisma.scheduledBlock.count({
       where: { userId, date: { gte: date, lt: nextDay } },
@@ -252,7 +283,8 @@ export class ChecklistService {
         checklist: null,
         checklistDisabled: true,
         disabledReason: 'first_week',
-        message: 'İlk hafta adaptasyon haftası. Programın hazır; bu hafta checklist sunulmayacak.',
+        message:
+          'İlk hafta adaptasyon haftası. Programın hazır; bu hafta checklist sunulmayacak.',
       };
     }
 
@@ -269,12 +301,20 @@ export class ChecklistService {
     ]);
 
     // Tarih → varlık map'i oluştur (bellekte karşılaştırma)
-    const datesWithBlocks = new Set(weekBlocks.map(b => this.toLocalDateStr(b.date)));
-    const checklistByDate = new Map(weekChecklists.map(c => [this.toLocalDateStr(c.date), c]));
+    const datesWithBlocks = new Set(
+      weekBlocks.map((b) => this.toLocalDateStr(b.date)),
+    );
+    const checklistByDate = new Map(
+      weekChecklists.map((c) => [this.toLocalDateStr(c.date), c]),
+    );
 
     // Pazartesi'den bugüne eksik checklistleri bul
     const missingDates: string[] = [];
-    for (let cursor = new Date(weekStart); cursor < date; cursor = this.nextLocalDay(cursor)) {
+    for (
+      let cursor = new Date(weekStart);
+      cursor < date;
+      cursor = this.nextLocalDay(cursor)
+    ) {
       const key = this.toLocalDateStr(cursor);
       if (datesWithBlocks.has(key) && !checklistByDate.has(key)) {
         missingDates.push(key);

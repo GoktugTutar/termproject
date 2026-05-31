@@ -46,10 +46,6 @@ export class SubmitChecklistDto {
   @Max(5)
   fatigueLevel: number;
 
-  @IsOptional()
-  @IsBoolean()
-  sleptWell?: boolean; // frontend hazır olunca doldurulur
-
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ChecklistItemDto)

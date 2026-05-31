@@ -61,6 +61,16 @@ export class LessonController {
     return this.lessonService.addExam(req.user.id, id, dto.examDate);
   }
 
+  @Put(':id/exam/:examId')
+  updateExam(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('examId', ParseIntPipe) examId: number,
+    @Body() dto: AddExamDto,
+  ) {
+    return this.lessonService.updateExam(req.user.id, id, examId, dto.examDate);
+  }
+
   // Derse deadline / ödev ekle
   @Post(':id/deadline')
   addDeadline(

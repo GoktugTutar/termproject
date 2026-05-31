@@ -77,6 +77,27 @@ export class LessonService {
     });
   }
 
+  async updateExam(
+    userId: number,
+    lessonId: number,
+    examId: number,
+    examDate: string,
+  ) {
+    const exam = await this.prisma.lessonExam.findUnique({
+      where: { id: examId },
+      include: { lesson: true },
+    });
+    if (!exam || exam.lessonId !== lessonId) {
+      throw new NotFoundException('Sınav bulunamadı');
+    }
+    if (exam.lesson.userId !== userId) throw new ForbiddenException();
+
+    return this.prisma.lessonExam.update({
+      where: { id: examId },
+      data: { examDate: new Date(examDate) },
+    });
+  }
+
   // Derse deadline / ödev ekle
   async addDeadline(
     userId: number,
